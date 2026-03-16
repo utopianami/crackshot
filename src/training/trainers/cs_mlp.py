@@ -65,6 +65,7 @@ class CSMLPTrainer(BaseTrainer):
         feature_mode = getattr(cs_cfg, 'feature_mode', 'raw_mean_zscore')
         self._feature_mode = feature_mode
         self._use_layernorm = getattr(cs_cfg, 'use_layernorm', False)
+        self._activation = getattr(cs_cfg, 'activation', 'gelu')
         aug_dim = self._aug_dim(in_features, feature_mode)
         log.info(f"=== CS-MLP Training (hidden={cs_cfg.hidden_units}, "
                  f"in={in_features}, aug={aug_dim}, mode={feature_mode}) ===")
@@ -80,6 +81,7 @@ class CSMLPTrainer(BaseTrainer):
             num_horizons=self._num_horizons,
             key=model_key,
             use_layernorm=cs_cfg.use_layernorm,
+            activation=getattr(cs_cfg, 'activation', 'gelu'),
         )
 
         # Train
@@ -541,6 +543,7 @@ class CSMLPTrainer(BaseTrainer):
                 "class_bins": list(self._class_interior_bins),
                 "feature_mode": getattr(self, '_feature_mode', 'raw_mean_zscore'),
                 "use_layernorm": getattr(self, '_use_layernorm', False),
+                "activation": getattr(self, '_activation', 'gelu'),
             }, f)
 
         log.info(f"Model saved to {path}")
@@ -565,6 +568,7 @@ class CSMLPTrainer(BaseTrainer):
             num_horizons=cfg["num_horizons"],
             key=key,
             use_layernorm=cfg.get("use_layernorm", False),
+            activation=cfg.get("activation", "gelu"),
         )
         self.model = eqx.tree_deserialise_leaves(
             str(path / "cs_mlp_model.eqx"), self.model

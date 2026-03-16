@@ -23,6 +23,7 @@ class CrossSectionalMLP(eqx.Module):
     num_horizons: int
     num_classes: int
     use_layernorm: bool
+    activation: str
 
     def __init__(
         self,
@@ -34,6 +35,7 @@ class CrossSectionalMLP(eqx.Module):
         *,
         key: jax.Array,
         use_layernorm: bool = False,
+        activation: str = "gelu",
     ):
         keys = jax.random.split(key, len(hidden_units) + 1)
 
@@ -54,6 +56,7 @@ class CrossSectionalMLP(eqx.Module):
         self.num_horizons = num_horizons
         self.num_classes = num_classes
         self.use_layernorm = use_layernorm
+        self.activation = activation
 
     def __call__(self, x: jax.Array, *, key: jax.Array, inference: bool = False):
         """Forward pass.
@@ -66,11 +69,12 @@ class CrossSectionalMLP(eqx.Module):
         Returns:
             logits: [num_horizons, num_classes]
         """
+        act_fn = {"gelu": jax.nn.gelu, "silu": jax.nn.silu, "relu": jax.nn.relu}[self.activation]
         for layer, drop, norm in zip(self.layers, self.dropouts, self.norms):
             x = layer(x)
             if norm is not None:
                 x = norm(x)
-            x = jax.nn.gelu(x)
+            x = act_fn(x)
             key, subkey = jax.random.split(key)
             x = drop(x, key=subkey, inference=inference)
 

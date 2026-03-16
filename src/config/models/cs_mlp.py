@@ -23,3 +23,4 @@ class CSMLPConfig:
     # Feature modes: "raw_mean_zscore" (default), "zscore", "raw_zscore", "rank"
     feature_mode: str = "raw_mean_zscore"
     use_layernorm: bool = False
+    activation: str = "gelu"
