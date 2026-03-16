@@ -24,3 +24,4 @@ class CSMLPConfig:
     feature_mode: str = "raw_mean_zscore"
     use_layernorm: bool = False
     activation: str = "gelu"
+    warmup_epochs: int = 0  # 0 = no warmup, >0 = linear warmup then cosine decay

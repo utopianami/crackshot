@@ -237,15 +237,29 @@ class CSMLPTrainer(BaseTrainer):
         ts_rows_va, ts_counts_va, n_ts_va,
         cs_cfg, key: jax.Array,
     ) -> CrossSectionalMLP:
-        optimizer = optax.adamw(cs_cfg.lr, weight_decay=cs_cfg.weight_decay)
-        opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
-
         smoothing = cs_cfg.label_smoothing
         ln_weight = float(cs_cfg.listnet_weight)
         ln_tau_true = float(cs_cfg.listnet_tau_true)
         ln_tau_pred = float(cs_cfg.listnet_tau_pred)
         h_weight_120 = float(cs_cfg.horizon_weight_120)
         n_ts_per_batch = int(cs_cfg.n_timestamps_per_batch)
+
+        warmup_epochs = getattr(cs_cfg, 'warmup_epochs', 0)
+        if warmup_epochs > 0:
+            steps_per_epoch = max(1, n_ts_tr // n_ts_per_batch)
+            warmup_steps = warmup_epochs * steps_per_epoch
+            total_steps = cs_cfg.epochs * steps_per_epoch
+            schedule = optax.warmup_cosine_decay_schedule(
+                init_value=cs_cfg.lr * 0.01,
+                peak_value=cs_cfg.lr,
+                warmup_steps=warmup_steps,
+                decay_steps=total_steps,
+                end_value=cs_cfg.lr * 0.01,
+            )
+            optimizer = optax.adamw(schedule, weight_decay=cs_cfg.weight_decay)
+        else:
+            optimizer = optax.adamw(cs_cfg.lr, weight_decay=cs_cfg.weight_decay)
+        opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
 
         @eqx.filter_jit
         def train_step(model, opt_state, x_ts, y120_ts, ret120_ts, mask_ts, key):
