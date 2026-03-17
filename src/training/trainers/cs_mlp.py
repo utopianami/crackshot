@@ -40,6 +40,7 @@ class CSMLPTrainer(BaseTrainer):
         self._num_classes = len(ds.class_bins) + 1
         self.model: CrossSectionalMLP | None = None
         self.feature_columns: list[str] | None = None
+        self._feature_indices: np.ndarray | None = None
         self._val_predictions: np.ndarray | None = None
         self._val_actual: np.ndarray | None = None
 
@@ -66,6 +67,11 @@ class CSMLPTrainer(BaseTrainer):
         self._feature_mode = feature_mode
         self._use_layernorm = getattr(cs_cfg, 'use_layernorm', False)
         self._activation = getattr(cs_cfg, 'activation', 'gelu')
+        feat_idx = getattr(cs_cfg, 'feature_indices', [])
+        self._feature_indices = np.array(feat_idx, dtype=int) if feat_idx else None
+        if self._feature_indices is not None:
+            in_features = len(self._feature_indices)
+            log.info(f"Feature selection: {len(self._feature_indices)}/{X_train.shape[1]} features")
         aug_dim = self._aug_dim(in_features, feature_mode)
         log.info(f"=== CS-MLP Training (hidden={cs_cfg.hidden_units}, "
                  f"in={in_features}, aug={aug_dim}, mode={feature_mode}) ===")
@@ -82,6 +88,7 @@ class CSMLPTrainer(BaseTrainer):
             key=model_key,
             use_layernorm=cs_cfg.use_layernorm,
             activation=getattr(cs_cfg, 'activation', 'gelu'),
+            residual=getattr(cs_cfg, 'residual', False),
         )
 
         # Train
@@ -190,7 +197,7 @@ class CSMLPTrainer(BaseTrainer):
             mask: [N_ts, max_stocks] 1=valid, 0=padding
         """
         bins = self._class_interior_bins
-        n_features = X.shape[1]
+        n_features = len(self._feature_indices) if self._feature_indices is not None else X.shape[1]
         feature_mode = getattr(self, '_feature_mode', 'raw_mean_zscore')
         aug_dim = self._aug_dim(n_features, feature_mode)
 
@@ -214,6 +221,8 @@ class CSMLPTrainer(BaseTrainer):
             rows = ts_rows[ts_idx, :n_stocks]
 
             X_raw = np.array(X[rows]).astype(np.float32)  # [S, F]
+            if self._feature_indices is not None:
+                X_raw = X_raw[:, self._feature_indices]
             y_batch = np.array(y[rows])
             y120 = to_classes(y_batch[:, self._h1], bins)
             ret120 = y_batch[:, self._h1].astype(np.float32)
@@ -243,6 +252,7 @@ class CSMLPTrainer(BaseTrainer):
         ln_tau_pred = float(cs_cfg.listnet_tau_pred)
         h_weight_120 = float(cs_cfg.horizon_weight_120)
         n_ts_per_batch = int(cs_cfg.n_timestamps_per_batch)
+        freeze_body = getattr(cs_cfg, 'freeze_body', False)
 
         warmup_epochs = getattr(cs_cfg, 'warmup_epochs', 0)
         if warmup_epochs > 0:
@@ -300,6 +310,15 @@ class CSMLPTrainer(BaseTrainer):
                 return ce_loss
 
             loss, grads = eqx.filter_value_and_grad(loss_fn)(model)
+            if freeze_body:
+                # Zero out body grads — keep only head gradients
+                head_w, head_b = grads.head.weight, grads.head.bias
+                grads = jax.tree.map(
+                    lambda x: jnp.zeros_like(x) if eqx.is_array(x) else x, grads
+                )
+                grads = eqx.tree_at(
+                    lambda m: (m.head.weight, m.head.bias), grads, (head_w, head_b)
+                )
             updates, new_opt_state = optimizer.update(
                 grads, opt_state, eqx.filter(model, eqx.is_array)
             )
@@ -447,6 +466,8 @@ class CSMLPTrainer(BaseTrainer):
                 rows = ts_rows[ts_i, :n_stocks]
 
                 X_raw = np.array(X[rows]).astype(np.float32)
+                if self._feature_indices is not None:
+                    X_raw = X_raw[:, self._feature_indices]
                 y_batch = np.array(y[rows])
 
                 # Cross-sectional augmentation
@@ -558,6 +579,8 @@ class CSMLPTrainer(BaseTrainer):
                 "feature_mode": getattr(self, '_feature_mode', 'raw_mean_zscore'),
                 "use_layernorm": getattr(self, '_use_layernorm', False),
                 "activation": getattr(self, '_activation', 'gelu'),
+                "feature_indices": self._feature_indices.tolist() if self._feature_indices is not None else None,
+                "residual": getattr(self.model, 'residual', False),
             }, f)
 
         log.info(f"Model saved to {path}")
@@ -583,10 +606,13 @@ class CSMLPTrainer(BaseTrainer):
             key=key,
             use_layernorm=cfg.get("use_layernorm", False),
             activation=cfg.get("activation", "gelu"),
+            residual=cfg.get("residual", False),
         )
         self.model = eqx.tree_deserialise_leaves(
             str(path / "cs_mlp_model.eqx"), self.model
         )
         self._class_interior_bins = np.array(cfg["class_bins"], dtype=np.float64)
         self._feature_mode = cfg.get("feature_mode", "raw_mean_zscore")
+        fi = cfg.get("feature_indices")
+        self._feature_indices = np.array(fi, dtype=int) if fi is not None else None
         log.info(f"Model loaded from {path} (feature_mode={self._feature_mode})")

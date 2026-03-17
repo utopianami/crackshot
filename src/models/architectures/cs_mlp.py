@@ -24,6 +24,7 @@ class CrossSectionalMLP(eqx.Module):
     num_classes: int
     use_layernorm: bool
     activation: str
+    residual: bool
 
     def __init__(
         self,
@@ -36,6 +37,7 @@ class CrossSectionalMLP(eqx.Module):
         key: jax.Array,
         use_layernorm: bool = False,
         activation: str = "gelu",
+        residual: bool = False,
     ):
         keys = jax.random.split(key, len(hidden_units) + 1)
 
@@ -57,6 +59,7 @@ class CrossSectionalMLP(eqx.Module):
         self.num_classes = num_classes
         self.use_layernorm = use_layernorm
         self.activation = activation
+        self.residual = residual
 
     def __call__(self, x: jax.Array, *, key: jax.Array, inference: bool = False):
         """Forward pass.
@@ -71,12 +74,17 @@ class CrossSectionalMLP(eqx.Module):
         """
         act_fn = {"gelu": jax.nn.gelu, "silu": jax.nn.silu, "relu": jax.nn.relu}[self.activation]
         for layer, drop, norm in zip(self.layers, self.dropouts, self.norms):
-            x = layer(x)
+            h = layer(x)
             if norm is not None:
-                x = norm(x)
-            x = act_fn(x)
+                h = norm(h)
+            h = act_fn(h)
             key, subkey = jax.random.split(key)
-            x = drop(x, key=subkey, inference=inference)
+            h = drop(h, key=subkey, inference=inference)
+            # Residual connection if dims match
+            if self.residual and x.shape[-1] == h.shape[-1]:
+                x = x + h
+            else:
+                x = h
 
         logits = self.head(x)  # [H * C]
         return logits.reshape(self.num_horizons, self.num_classes)

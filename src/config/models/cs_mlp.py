@@ -25,3 +25,6 @@ class CSMLPConfig:
     use_layernorm: bool = False
     activation: str = "gelu"
     warmup_epochs: int = 0  # 0 = no warmup, >0 = linear warmup then cosine decay
+    freeze_body: bool = False  # True = freeze hidden layers, train head only
+    feature_indices: list[int] = field(default_factory=list)  # empty = all features
+    residual: bool = False  # True = add skip connections between same-dim layers
