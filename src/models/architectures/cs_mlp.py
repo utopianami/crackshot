@@ -17,6 +17,7 @@ class CrossSectionalMLP(eqx.Module):
     """
 
     layers: list
+    gate_layers: list  # GLU gate projections (None when not using GLU)
     dropouts: list
     norms: list
     head: eqx.nn.Linear
@@ -25,6 +26,7 @@ class CrossSectionalMLP(eqx.Module):
     use_layernorm: bool
     activation: str
     residual: bool
+    use_glu: bool
 
     def __init__(
         self,
@@ -38,28 +40,40 @@ class CrossSectionalMLP(eqx.Module):
         use_layernorm: bool = False,
         activation: str = "gelu",
         residual: bool = False,
+        use_glu: bool = False,
     ):
-        keys = jax.random.split(key, len(hidden_units) + 1)
+        n_keys = len(hidden_units) * (2 if use_glu else 1) + 1
+        keys = jax.random.split(key, n_keys)
 
         layers = []
+        gate_layers = []
         dropouts = []
         norms = []
         prev_dim = in_features
+        ki = 0
         for i, h in enumerate(hidden_units):
-            layers.append(eqx.nn.Linear(prev_dim, h, key=keys[i]))
+            layers.append(eqx.nn.Linear(prev_dim, h, key=keys[ki]))
+            ki += 1
+            if use_glu:
+                gate_layers.append(eqx.nn.Linear(prev_dim, h, key=keys[ki]))
+                ki += 1
+            else:
+                gate_layers.append(None)
             dropouts.append(eqx.nn.Dropout(p=dropout))
             norms.append(eqx.nn.LayerNorm(h) if use_layernorm else None)
             prev_dim = h
 
         self.layers = layers
+        self.gate_layers = gate_layers
         self.dropouts = dropouts
         self.norms = norms
-        self.head = eqx.nn.Linear(prev_dim, num_horizons * num_classes, key=keys[-1])
+        self.head = eqx.nn.Linear(prev_dim, num_horizons * num_classes, key=keys[ki])
         self.num_horizons = num_horizons
         self.num_classes = num_classes
         self.use_layernorm = use_layernorm
         self.activation = activation
         self.residual = residual
+        self.use_glu = use_glu
 
     def __call__(self, x: jax.Array, *, key: jax.Array, inference: bool = False):
         """Forward pass.
@@ -73,11 +87,15 @@ class CrossSectionalMLP(eqx.Module):
             logits: [num_horizons, num_classes]
         """
         act_fn = {"gelu": jax.nn.gelu, "silu": jax.nn.silu, "relu": jax.nn.relu}[self.activation]
-        for layer, drop, norm in zip(self.layers, self.dropouts, self.norms):
-            h = layer(x)
+        for layer, gate, drop, norm in zip(self.layers, self.gate_layers, self.dropouts, self.norms):
+            if self.use_glu and gate is not None:
+                h = layer(x) * jax.nn.sigmoid(gate(x))
+            else:
+                h = layer(x)
             if norm is not None:
                 h = norm(h)
-            h = act_fn(h)
+            if not (self.use_glu and gate is not None):
+                h = act_fn(h)
             key, subkey = jax.random.split(key)
             h = drop(h, key=subkey, inference=inference)
             # Residual connection if dims match

@@ -28,3 +28,5 @@ class CSMLPConfig:
     freeze_body: bool = False  # True = freeze hidden layers, train head only
     feature_indices: list[int] = field(default_factory=list)  # empty = all features
     residual: bool = False  # True = add skip connections between same-dim layers
+    focal_gamma: float = 0.0  # >0 = focal loss (focus on hard examples)
+    use_glu: bool = False  # True = Gated Linear Unit layers

@@ -89,6 +89,7 @@ class CSMLPTrainer(BaseTrainer):
             use_layernorm=cs_cfg.use_layernorm,
             activation=getattr(cs_cfg, 'activation', 'gelu'),
             residual=getattr(cs_cfg, 'residual', False),
+            use_glu=getattr(cs_cfg, 'use_glu', False),
         )
 
         # Train
@@ -253,6 +254,7 @@ class CSMLPTrainer(BaseTrainer):
         h_weight_120 = float(cs_cfg.horizon_weight_120)
         n_ts_per_batch = int(cs_cfg.n_timestamps_per_batch)
         freeze_body = getattr(cs_cfg, 'freeze_body', False)
+        focal_gamma = float(getattr(cs_cfg, 'focal_gamma', 0.0))
 
         warmup_epochs = getattr(cs_cfg, 'warmup_epochs', 0)
         if warmup_epochs > 0:
@@ -291,13 +293,20 @@ class CSMLPTrainer(BaseTrainer):
                 all_logits, all_scores = jax.vmap(forward_ts)(x_ts, keys_all)
                 # all_logits: [N_ts, S, H, C], all_scores: [N_ts, S]
 
-                # CE loss (masked)
+                # CE loss (masked), optionally focal
                 logits_120 = all_logits[:, :, 1, :]  # [N_ts, S, C]
                 ce_per_stock = optax.softmax_cross_entropy_with_integer_labels(
                     logits_120.reshape(-1, logits_120.shape[-1]),
                     y120_ts.reshape(-1),
                 ).reshape(x_ts.shape[0], x_ts.shape[1])
-                # Apply label smoothing manually if needed
+                if focal_gamma > 0:
+                    # Focal loss: weight = (1 - p_t)^gamma
+                    probs_all = jax.nn.softmax(logits_120, axis=-1)  # [N_ts, S, C]
+                    p_t = jnp.take_along_axis(
+                        probs_all, y120_ts[:, :, None], axis=-1
+                    ).squeeze(-1)  # [N_ts, S]
+                    focal_weight = (1.0 - p_t) ** focal_gamma
+                    ce_per_stock = ce_per_stock * focal_weight
                 ce_masked = ce_per_stock * mask_ts
                 ce_loss = jnp.sum(ce_masked) / jnp.maximum(jnp.sum(mask_ts), 1.0)
 
@@ -581,6 +590,7 @@ class CSMLPTrainer(BaseTrainer):
                 "activation": getattr(self, '_activation', 'gelu'),
                 "feature_indices": self._feature_indices.tolist() if self._feature_indices is not None else None,
                 "residual": getattr(self.model, 'residual', False),
+                "use_glu": getattr(self.model, 'use_glu', False),
             }, f)
 
         log.info(f"Model saved to {path}")
@@ -607,6 +617,7 @@ class CSMLPTrainer(BaseTrainer):
             use_layernorm=cfg.get("use_layernorm", False),
             activation=cfg.get("activation", "gelu"),
             residual=cfg.get("residual", False),
+            use_glu=cfg.get("use_glu", False),
         )
         self.model = eqx.tree_deserialise_leaves(
             str(path / "cs_mlp_model.eqx"), self.model
