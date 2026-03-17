@@ -1,25 +1,29 @@
-"""Training script with Hydra configuration."""
+"""Training script with OmegaConf configuration.
 
+Usage:
+    # Config file + overrides
+    PYTHONPATH="." uv run python scripts/train.py -c configs/tab_m.yaml tab_m.npy_dir=/path
+
+    # Overrides only (uses dataclass defaults)
+    PYTHONPATH="." uv run python scripts/train.py model.name=tab_m tab_m.npy_dir=/path tab_m.d_block=256
+"""
+
+import argparse
 import logging
 import time
 
 import numpy as np
-import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 from pathlib import Path
 
-from src.utils.config import register_configs
+from src.config import load_config
 from src.evaluation.metrics import calculate_metrics
-from src.training.registry import create_trainer
+from src.training.registry import (
+    create_trainer,
+    discover_trainers,
+    is_classification,
+)
 
-# Trainer 등록 (import 시 자동 등록)
-import src.training.nn_trainer  # noqa: F401
-import src.training.ae_mlp_trainer  # noqa: F401
-import src.training.mamba_tab_trainer  # noqa: F401
-import src.training.tsc_mamba_trainer  # noqa: F401
-import src.training.tab_m_trainer  # noqa: F401
-
-register_configs()
 log = logging.getLogger(__name__)
 
 
@@ -65,27 +69,34 @@ def _log_eval(predictions, actual, prefix=""):
         log.info(f"  Bot {k:>4s}%: acc={metrics[f'bot{k}pct_acc']:.1%}, mean_ret={metrics[f'bot{k}pct_mean_return']:.6f}")
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="config")
-def main(cfg: DictConfig) -> None:
-    log.info(f"Training model: {cfg.model.name}")
+def main():
+    parser = argparse.ArgumentParser(description="Train a model")
+    parser.add_argument("-c", "--config", type=str, default=None, help="YAML config file")
+    parser.add_argument("overrides", nargs="*", help="Config overrides (key=value dotlist)")
+    args = parser.parse_args()
+
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # Auto-discover trainers and load config
+    discover_trainers()
+    cfg = load_config(args.config, args.overrides)
+
+    model_name = cfg.model.name
+    log.info(f"Training model: {model_name}")
     log.info(f"\n{OmegaConf.to_yaml(cfg)}")
 
-    # Resolve npy_dir based on model type
-    if cfg.model.name == "ae_mlp":
-        npy_dir = cfg.ae_mlp.npy_dir
-    elif cfg.model.name == "mamba_tab":
-        npy_dir = cfg.mamba_tab.npy_dir
-    elif cfg.model.name == "tsc_mamba":
-        npy_dir = cfg.tsc_mamba.npy_dir
-    elif cfg.model.name == "tab_m":
-        npy_dir = cfg.tab_m.npy_dir
-    else:
-        npy_dir = cfg.nn.npy_dir
+    # Resolve npy_dir from data config
+    npy_dir = cfg.data.data_path
     if not npy_dir:
-        raise ValueError("npy_dir must be set. Run convert_kospi_npy.py first.")
+        raise ValueError("data.data_path must be set. Run convert_kospi_npy.py first.")
 
     # 1. Train
-    trainer = create_trainer(cfg.model.name, cfg=cfg)
+    trainer = create_trainer(model_name, cfg=cfg)
 
     t_start = time.time()
     trainer.fit_from_npy(npy_dir)
@@ -95,8 +106,7 @@ def main(cfg: DictConfig) -> None:
     # 2. Evaluate (val)
     predictions = trainer._val_predictions
     actual = trainer._val_actual
-    if cfg.model.name in ("ae_mlp", "mamba_tab", "tsc_mamba", "tab_m"):
-        # classification models return (probs [N,5], raw_c2c_120 [N])
+    if is_classification(model_name):
         _log_eval_cls(predictions, actual, prefix="VAL ")
     else:
         _log_eval(predictions, actual, prefix="VAL ")
@@ -106,10 +116,10 @@ def main(cfg: DictConfig) -> None:
     has_test = (npy_path / "X_test.npy").exists() or (npy_path / "X.npy").exists()
     if has_test:
         test_predictions, test_actual = trainer.predict_npy(npy_dir, split="test")
-        if cfg.model.name in ("ae_mlp", "mamba_tab", "tsc_mamba", "tab_m"):
+        if is_classification(model_name):
             _log_eval_cls(test_predictions, test_actual, prefix="TEST ")
             # Save predictions for evaluate_topk.py
-            out_dir = Path(cfg.paths.inference_path) / cfg.model.name
+            out_dir = Path(cfg.paths.inference_path) / model_name
             out_dir.mkdir(parents=True, exist_ok=True)
             np.save(out_dir / "test_probs.npy", test_predictions)
             np.save(out_dir / "test_actual.npy", test_actual)
@@ -118,7 +128,7 @@ def main(cfg: DictConfig) -> None:
             _log_eval(test_predictions, test_actual, prefix="TEST ")
 
     # 4. Save
-    save_path = Path(cfg.paths.saved_model_path) / cfg.model.name
+    save_path = Path(cfg.paths.saved_model_path) / model_name
     save_path.mkdir(parents=True, exist_ok=True)
     trainer.save(save_path)
     log.info(f"Model saved to {save_path}")
