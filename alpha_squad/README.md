@@ -10,12 +10,12 @@ alpha_squad/
 ├── run.py                    ← CLI 진입점 (topic, --rounds, --context-file)
 ├── config.py                 ← AlphaSquadConfig (모델, 경로, context files)
 │
-├── agents/                   ← 5명의 에이전트 (AutoGen ConversableAgent)
-│   ├── researcher2.py        ← AI 아키텍처 전문가 (아이디어 제안자)
-│   ├── expert1.py            ← 피처 품질 비판가 (leakage, redundancy)
-│   ├── expert2.py            ← 문제 정의 비판가 (loss, label, regime)
-│   ├── researcher1.py        ← 금융 모델링 전문가 (feasibility check)
-│   └── researcher3.py        ← PM (실험 스펙 설계, 수용/기각 결정) [Opus]
+├── agents/                   ← 5명의 에이전트 (AutoGen ConversableAgent), 발언 순서:
+│   ├── researcher2.py        ← ① 최신 딥러닝 아키텍처 리서처 (아이디어 제안)
+│   ├── expert1.py            ← ② 피처 엔지니어링 전문가 (leakage·redundancy 비판)
+│   ├── expert2.py            ← ③ 실험 설계 전문가 (loss·label·regime 비판)
+│   ├── researcher1.py        ← ④ 금융 시계열 ML 엔지니어 (실현 가능성 검증)
+│   └── researcher3.py        ← ⑤ PM (종합 판단 + 실험 스펙 작성) [Opus]
 │
 ├── research/                 ← 사전 리서치 페이즈
 │   └── phase.py              ← 5 에이전트 병렬 리서치 (코드분석, 데이터분석, 논문검색)
