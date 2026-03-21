@@ -7,7 +7,7 @@ AutoGen GroupChat + Claude CLI 기반으로, 5명의 전문 에이전트가 체�
 
 ```
 alpha_squad/
-├── run.py                    ← CLI 진입점 (topic, --rounds, --context-file)
+├── run.py                    ← CLI 진입점 (study, meet, refresh)
 ├── config.py                 ← AlphaSquadConfig (모델, 경로, context files)
 │
 ├── agents/                   ← 5명의 에이전트 (AutoGen ConversableAgent), 발언 순서:
@@ -17,8 +17,12 @@ alpha_squad/
 │   ├── researcher1.py        ← ④ 금융 시계열 ML 엔지니어 (실현 가능성 검증)
 │   └── researcher3.py        ← ⑤ PM (종합 판단 + 실험 스펙 작성) [Opus]
 │
+├── knowledge/                ← 지식 기반 (LightRAG)
+│   └── lightrag_backend.py   ← LightRAG + Claude CLI + sentence-transformers
+│
 ├── research/                 ← 사전 리서치 페이즈
-│   └── phase.py              ← 5 에이전트 병렬 리서치 (코드분석, 데이터분석, 논문검색)
+│   ├── phase.py              ← 5 에이전트 병렬 리서치 (코드분석, 데이터분석, 논문검색)
+│   └── knowledge.py          ← 지식 축적/회상 (study, recall, post_meeting_learn)
 │
 ├── meeting/                  ← 회의 오케스트레이터
 │   └── orchestrator.py       ← AutoGen GroupChat + 고정 발언 순서
@@ -26,11 +30,46 @@ alpha_squad/
 ├── llm/                      ← LLM 백엔드
 │   └── claude_client.py      ← Claude CLI 어댑터 (Max 구독, API키 불필요)
 │
-├── memory/                   ← 영속 메모리
-│   └── store.py              ← Mem0 + ChromaDB (에이전트별 namespace)
+├── memory/                   ← 회의 메모리 (ChromaDB)
+│   └── store.py              ← ChromaDB 벡터 DB (에이전트별 collection)
 │
-└── meetings/                 ← 회의록 저장 디렉토리
-    └── meeting_YYYYMMDD_HHMMSS.md
+├── knowledge_store/          ← LightRAG 에이전트별 지식 저장소
+│   ├── researcher1/          ← 금융 모델링 지식 (논문, 벤치마크)
+│   ├── researcher2/          ← AI 아키텍처 지식 (논문, 최신 기법)
+│   ├── expert1/              ← 피처 엔지니어링 지식
+│   ├── expert2/              ← 문제 정의/loss 지식
+│   └── researcher3/          ← 실험 관리 지식
+│
+├── memory_store/             ← ChromaDB 영속 저장소
+│   └── chroma/
+│
+├── meetings/                 ← 회의록 저장
+│   └── meeting_YYYYMMDD_HHMMSS.md
+│
+├── research_cache/           ← 일일 static 리서치 캐시
+│   └── static_YYYYMMDD.json
+│
+└── research_results/         ← 사전 리서치 결과 저장
+    └── YYYYMMDD_HHMMSS_*.md
+```
+
+## 지식 시스템 (2계층)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Layer 1: Knowledge Base (LightRAG)                             │
+│  ─ 에이전트별 독립된 지식 그래프                                   │
+│  ─ 논문/문서 → 엔티티+관계 자동 추출 → 그래프 저장                  │
+│  ─ 쿼리 시 그래프 탐색 + 벡터 검색 조합 (hybrid retrieval)          │
+│  ─ 저장소: knowledge_store/{agent}/                              │
+│                                                                 │
+│  LLM: Claude CLI (Max)  |  임베딩: all-MiniLM-L6-v2 (로컬)       │
+├─────────────────────────────────────────────────────────────────┤
+│  Layer 2: Meeting Memory (ChromaDB)                             │
+│  ─ 회의 발언/결정/비판을 벡터로 저장                                │
+│  ─ 다음 회의에서 시맨틱 검색으로 과거 맥락 회상                      │
+│  ─ 저장소: memory_store/chroma/                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## 회의 흐름
@@ -45,6 +84,8 @@ alpha_squad/
 │  Expert2     → label 분포 + loss 코드 분석 (코드 실행)            │
 │  Researcher1 → 실험 결과/모델 config 분석 (파일 읽기)             │
 │  Researcher3 → 코드베이스 구조 + 데이터 디렉토리 파악              │
+│                                                                 │
+│  + Knowledge Base에서 주제 관련 지식 recall (LightRAG hybrid)     │
 └────────────────────────┬────────────────────────────────────────┘
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -67,8 +108,9 @@ alpha_squad/
 │                    POST-MEETING                                  │
 │                                                                 │
 │  1. PM 발언에서 실험 스펙 추출 ("실험:" 키워드)                    │
-│  2. PM 결정 + Expert 비판 → Mem0 영속 저장                       │
-│  3. 전체 회의록 → meetings/meeting_YYYYMMDD.md 저장              │
+│  2. PM 결정 + Expert 비판 → ChromaDB 영속 저장                   │
+│  3. 핵심 인사이트 → Knowledge Base에 축적 (LightRAG)             │
+│  4. 전체 회의록 → meetings/meeting_YYYYMMDD.md 저장              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -79,23 +121,31 @@ alpha_squad/
 | **LLM 호출** | `claude` CLI subprocess → Max 구독 그대로 사용, API키 불필요 |
 | **에이전트 역할** | 제안(R2) → 비판(E1,E2) → 검증(R1) → 결정(R3) — 체계적 검증 루프 |
 | **PM 모델** | Opus (나머지는 Sonnet) — 최종 결정권자에게 강한 모델 |
-| **메모리** | Mem0 + ChromaDB, 에이전트별 namespace — 회의간 맥락 유지 |
+| **지식 기반** | LightRAG (에이전트별 지식 그래프) — 논문/문서에서 엔티티·관계 자동 추출 |
+| **회의 메모리** | ChromaDB (에이전트별 collection) — 회의간 맥락 유지 |
+| **임베딩** | sentence-transformers `all-MiniLM-L6-v2` (로컬, API키 불필요) |
 | **리서치** | 회의 전 실제 코드 실행/파일 분석 — system prompt 지식이 아닌 실데이터 기반 |
 | **출력** | PM이 `실험:` 형식의 구체적 실험 스펙 생성 → autoresearch 루프에 바로 투입 가능 |
 
 ## 사용법
 
 ```bash
+# 지식 축적 (논문/주제 연구 → Knowledge Base에 저장)
+PYTHONPATH="." uv run python alpha_squad/run.py study "tabular deep learning for finance 2025"
+
 # 기본 회의
-PYTHONPATH="." uv run python alpha_squad/run.py "다음 실험 방향은?"
+PYTHONPATH="." uv run python alpha_squad/run.py meet "다음 실험 방향은?"
 
 # 추가 컨텍스트 파일 포함
-PYTHONPATH="." uv run python alpha_squad/run.py "TabM 개선 방안" \
+PYTHONPATH="." uv run python alpha_squad/run.py meet "TabM 개선 방안" \
   --context-file BRAIN/kospi/experiments/results_all.tsv
 
 # 3라운드 토론
-PYTHONPATH="." uv run python alpha_squad/run.py "새로운 아키텍처 탐색" --rounds 3
+PYTHONPATH="." uv run python alpha_squad/run.py meet "새로운 아키텍처 탐색" --rounds 3
 
 # 메모리 없이 실행
-PYTHONPATH="." uv run python alpha_squad/run.py "피처 엔지니어링" --no-memory
+PYTHONPATH="." uv run python alpha_squad/run.py meet "피처 엔지니어링" --no-memory
+
+# Static 리서치 캐시 갱신
+PYTHONPATH="." uv run python alpha_squad/run.py refresh
 ```
