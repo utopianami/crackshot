@@ -166,7 +166,9 @@ class CSMLPTrainer(BaseTrainer):
         market_std = np.std(X_raw, axis=0, keepdims=True) + 1e-8
         z_score = (X_raw - market_mean) / market_std
 
-        if feature_mode == "zscore":
+        if feature_mode == "raw":
+            return X_raw
+        elif feature_mode == "zscore":
             return z_score
         elif feature_mode == "raw_zscore":
             return np.concatenate([X_raw, z_score], axis=1)
@@ -177,14 +179,26 @@ class CSMLPTrainer(BaseTrainer):
                 axis=0, arr=X_raw,
             )
             return ranks.astype(np.float32)
+        elif feature_mode in ("rankgauss", "raw_rankgauss"):
+            from scipy.special import erfinv
+            n = X_raw.shape[0]
+            # Vectorized rank via argsort (handles all columns at once)
+            order = np.argsort(np.argsort(X_raw, axis=0), axis=0).astype(np.float64)
+            # Convert to 1-based rank, then open interval (0, 1)
+            quantiles = (order + 1.0) / (n + 1.0)
+            rg = (np.sqrt(2.0) * erfinv(2.0 * quantiles - 1.0)).astype(np.float32)
+            if feature_mode == "rankgauss":
+                return rg
+            else:  # raw_rankgauss
+                return np.concatenate([X_raw, rg], axis=1)
         else:  # raw_mean_zscore (default)
             market_mean_expanded = np.broadcast_to(market_mean, X_raw.shape)
             return np.concatenate([X_raw, market_mean_expanded, z_score], axis=1)
 
     def _aug_dim(self, n_features: int, feature_mode: str) -> int:
-        if feature_mode in ("zscore", "rank"):
+        if feature_mode in ("raw", "zscore", "rank", "rankgauss"):
             return n_features
-        elif feature_mode == "raw_zscore":
+        elif feature_mode in ("raw_zscore", "raw_rankgauss"):
             return n_features * 2
         return n_features * 3  # raw_mean_zscore
 
@@ -255,6 +269,8 @@ class CSMLPTrainer(BaseTrainer):
         n_ts_per_batch = int(cs_cfg.n_timestamps_per_batch)
         freeze_body = getattr(cs_cfg, 'freeze_body', False)
         focal_gamma = float(getattr(cs_cfg, 'focal_gamma', 0.0))
+        pnl_weight = float(getattr(cs_cfg, 'pnl_weight', 0.0))
+        dz_threshold = float(getattr(cs_cfg, 'dead_zone_threshold', 0.0))
 
         warmup_epochs = getattr(cs_cfg, 'warmup_epochs', 0)
         if warmup_epochs > 0:
@@ -269,6 +285,13 @@ class CSMLPTrainer(BaseTrainer):
                 end_value=cs_cfg.lr * 0.01,
             )
             optimizer = optax.adamw(schedule, weight_decay=cs_cfg.weight_decay)
+        elif getattr(cs_cfg, 'optimizer', 'adamw') == 'sgd':
+            momentum = float(getattr(cs_cfg, 'sgd_momentum', 0.9))
+            optimizer = optax.chain(
+                optax.trace(decay=momentum),
+                optax.scale_by_learning_rate(cs_cfg.lr),
+                optax.add_decayed_weights(cs_cfg.weight_decay),
+            )
         else:
             optimizer = optax.adamw(cs_cfg.lr, weight_decay=cs_cfg.weight_decay)
         opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
@@ -307,8 +330,17 @@ class CSMLPTrainer(BaseTrainer):
                     ).squeeze(-1)  # [N_ts, S]
                     focal_weight = (1.0 - p_t) ** focal_gamma
                     ce_per_stock = ce_per_stock * focal_weight
-                ce_masked = ce_per_stock * mask_ts
-                ce_loss = jnp.sum(ce_masked) / jnp.maximum(jnp.sum(mask_ts), 1.0)
+                if pnl_weight > 0:
+                    # PnL-weighted CE: focus gradient on high-impact samples
+                    pnl_w = 1.0 + pnl_weight * jnp.abs(ret120_ts)
+                    ce_per_stock = ce_per_stock * pnl_w
+                effective_mask = mask_ts
+                if dz_threshold > 0:
+                    # Dead zone: exclude samples where |c2c_120| < threshold
+                    dz_mask = (jnp.abs(ret120_ts) >= dz_threshold).astype(jnp.float32)
+                    effective_mask = mask_ts * dz_mask
+                ce_masked = ce_per_stock * effective_mask
+                ce_loss = jnp.sum(ce_masked) / jnp.maximum(jnp.sum(effective_mask), 1.0)
 
                 if ln_weight > 0:
                     ln_loss = listnet_loss(

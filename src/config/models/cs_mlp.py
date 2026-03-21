@@ -20,7 +20,7 @@ class CSMLPConfig:
     listnet_tau_pred: float = 1.0
     n_timestamps_per_batch: int = 32  # how many timestamps per training step
     horizon_weight_120: float = 1.0
-    # Feature modes: "raw_mean_zscore" (default), "zscore", "raw_zscore", "rank"
+    # Feature modes: "raw_mean_zscore" (default), "zscore", "raw_zscore", "rank", "rankgauss", "raw_rankgauss"
     feature_mode: str = "raw_mean_zscore"
     use_layernorm: bool = False
     activation: str = "gelu"
@@ -30,3 +30,7 @@ class CSMLPConfig:
     residual: bool = False  # True = add skip connections between same-dim layers
     focal_gamma: float = 0.0  # >0 = focal loss (focus on hard examples)
     use_glu: bool = False  # True = Gated Linear Unit layers
+    pnl_weight: float = 0.0  # >0 = weight CE by |actual_return|, multiplied by this factor
+    dead_zone_threshold: float = 0.0  # >0 = exclude samples where |c2c_120| < threshold from loss (e.g. 0.0015)
+    optimizer: str = "adamw"  # "adamw" or "sgd"
+    sgd_momentum: float = 0.9

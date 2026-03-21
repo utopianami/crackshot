@@ -111,6 +111,10 @@ def main():
     else:
         _log_eval(predictions, actual, prefix="VAL ")
 
+    # Timestamp suffix for unique output paths
+    from datetime import datetime
+    ts_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     # 3. Evaluate (test)
     npy_path = Path(npy_dir)
     has_test = (npy_path / "X_test.npy").exists() or (npy_path / "X.npy").exists()
@@ -119,7 +123,7 @@ def main():
         if is_classification(model_name):
             _log_eval_cls(test_predictions, test_actual, prefix="TEST ")
             # Save predictions for evaluate_topk.py
-            out_dir = Path(cfg.paths.inference_path) / model_name
+            out_dir = Path(cfg.paths.inference_path) / f"{model_name}_{ts_suffix}"
             out_dir.mkdir(parents=True, exist_ok=True)
             np.save(out_dir / "test_probs.npy", test_predictions)
             np.save(out_dir / "test_actual.npy", test_actual)
@@ -128,9 +132,12 @@ def main():
             _log_eval(test_predictions, test_actual, prefix="TEST ")
 
     # 4. Save
-    save_path = Path(cfg.paths.saved_model_path) / model_name
+    save_path = Path(cfg.paths.saved_model_path) / f"{model_name}_{ts_suffix}"
     save_path.mkdir(parents=True, exist_ok=True)
     trainer.save(save_path)
+    # Save full training config for reproducibility
+    with open(save_path / "train_config.yaml", "w") as f:
+        f.write(OmegaConf.to_yaml(cfg))
     log.info(f"Model saved to {save_path}")
 
 
