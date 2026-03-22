@@ -150,6 +150,22 @@ nohup bash alpha_squad/knowledge/run_all_study.sh > alpha_squad/study_all.log 2>
 - **researcher1**: tree vs DL benchmark, CS vs per-stock, regularization, ensemble, non-stationarity
 - **researcher3**: HPO, reproducibility, model decay, experiment management
 
+### 지식 업데이트
+
+LightRAG는 incremental — 새 문서를 넣으면 기존 그래프에 엔티티/관계가 추가되고, 중복 엔티티는 자동 merge.
+
+```bash
+# 새 주제 추가 (기존 지식 그래프에 merge)
+PYTHONPATH="." uv run python alpha_squad/knowledge/study_agent.py expert1 "order flow imbalance" --depth 2
+
+# 시드 키워드 추가: knowledge/study_agent.py의 SEED_TOPICS dict에 추가 후 재실행
+PYTHONPATH="." uv run python alpha_squad/knowledge/study_agent.py expert1 --depth 2
+```
+
+- 주기적으로 돌릴 필요 없음 — 새 주제가 생기거나 지식이 부족할 때만
+- 삭제 없이 쌓이기만 하므로 부담 없이 실행 가능
+- 지식 그래프 초기화가 필요하면: `rm -rf alpha_squad/knowledge_store/{agent}/`
+
 ### 회의
 
 ```bash
