@@ -33,7 +33,7 @@ async def claude_cli_complete(
     **kwargs,
 ) -> str:
     """LightRAG-compatible LLM function using claude CLI."""
-    full_prompt = ""
+    full_prompt = "IMPORTANT: Respond with text only. Do NOT use any tools. Do NOT read files or search the web. Just answer based on the provided context.\n\n"
     if system_prompt:
         full_prompt += system_prompt + "\n\n"
     if history_messages:
@@ -57,7 +57,7 @@ def _call_claude_cli(prompt: str, timeout: int = 180) -> str:
                 "claude",
                 "-p", "-",
                 "--output-format", "text",
-                "--max-turns", "1",
+                "--max-turns", "5",
                 "--model", "sonnet",
             ],
             input=prompt,

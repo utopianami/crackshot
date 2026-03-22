@@ -1,5 +1,6 @@
 """AlphaSquad meeting orchestrator using AutoGen GroupChat + claude CLI."""
 
+import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
@@ -16,8 +17,19 @@ from alpha_squad.agents import (
 from alpha_squad.config import AlphaSquadConfig
 from alpha_squad.llm import ClaudeCLIClient
 from alpha_squad.memory.store import AlphaSquadMemory
+from alpha_squad.knowledge.lightrag_backend import AlphaSquadKnowledge
 from alpha_squad.research.phase import run_research_phase
 from alpha_squad.research.knowledge import recall_knowledge, post_meeting_learn
+
+
+# Mapping: AutoGen agent name → LightRAG agent name
+_AGENT_TO_KNOWLEDGE = {
+    "Researcher1_금융모델링": "researcher1",
+    "Researcher2_AI아키텍처": "researcher2",
+    "Researcher3_PM": "researcher3",
+    "Expert1_피처전문가": "expert1",
+    "Expert2_문제정의전문가": "expert2",
+}
 
 
 # Meeting flow: who speaks after whom
@@ -197,19 +209,45 @@ def run_meeting(
     # Recall accumulated knowledge from Mem0 per agent
     knowledge_contexts = {name: "" for name in SPEAKER_ORDER}
     if memory is not None:
-        print("[AlphaSquad] Recalling accumulated knowledge...")
+        print("[AlphaSquad] Recalling accumulated knowledge from ChromaDB...")
         for name in SPEAKER_ORDER:
             knowledge_contexts[name] = recall_knowledge(name, topic, memory)
             if knowledge_contexts[name]:
-                print(f"  [{name}] recalled {len(knowledge_contexts[name])} chars")
+                print(f"  [{name}] ChromaDB: {len(knowledge_contexts[name])} chars")
 
-    # Combine memory + knowledge + research context per agent
+    # Recall from LightRAG knowledge base per agent
+    lightrag_contexts = {name: "" for name in SPEAKER_ORDER}
+    try:
+        print("[AlphaSquad] Querying LightRAG knowledge base...")
+        kg = AlphaSquadKnowledge()
+
+        async def _query_all():
+            for name in SPEAKER_ORDER:
+                kg_name = _AGENT_TO_KNOWLEDGE.get(name)
+                if not kg_name:
+                    continue
+                try:
+                    ctx = await kg.query_context(kg_name, topic, mode="hybrid", max_chars=3000)
+                    if ctx:
+                        lightrag_contexts[name] = ctx
+                        print(f"  [{name}] LightRAG: {len(ctx)} chars")
+                except Exception as e:
+                    print(f"  [{name}] LightRAG query failed: {e}")
+            await kg.close()
+
+        asyncio.run(_query_all())
+    except Exception as e:
+        print(f"[AlphaSquad] LightRAG init failed ({e}), proceeding without knowledge base")
+
+    # Combine memory + lightrag knowledge + research context per agent
     def _agent_context(name: str) -> str:
         parts = []
         if memory_contexts.get(name):
             parts.append(memory_contexts[name])
         if knowledge_contexts.get(name):
             parts.append(knowledge_contexts[name][:2000])
+        if lightrag_contexts.get(name):
+            parts.append(lightrag_contexts[name])
         if research_results.get(name):
             parts.append(f"\n[사전 리서치 결과]\n{research_results[name][:3000]}")
         return "\n".join(parts)
