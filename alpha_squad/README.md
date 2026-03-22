@@ -129,11 +129,31 @@ alpha_squad/
 
 ## 사용법
 
-```bash
-# 지식 축적 (논문/주제 연구 → Knowledge Base에 저장)
-PYTHONPATH="." uv run python alpha_squad/run.py study "tabular deep learning for finance 2025"
+### 지식 수집 (study-agent)
 
-# 기본 회의
+에이전트별 지식 그래프를 웹 검색 기반으로 구축한다. Snowball 방식으로 키워드를 확장하며 수집.
+
+```bash
+# 특정 에이전트에 특정 주제 수집 (depth=2: 시드 + 1단계 확장)
+PYTHONPATH="." uv run python alpha_squad/knowledge/study_agent.py expert1 "alpha factor design" --depth 2
+
+# 에이전트의 사전 정의된 시드 키워드 전체 수집
+PYTHONPATH="." uv run python alpha_squad/knowledge/study_agent.py expert1 --depth 2
+
+# 4개 에이전트 전체 일괄 수집 (밤새 돌리기용)
+nohup bash alpha_squad/knowledge/run_all_study.sh > alpha_squad/study_all.log 2>&1 &
+```
+
+사전 정의된 시드 키워드 (knowledge/study_agent.py `SEED_TOPICS`):
+- **expert1**: alpha factor, microstructure, IC/feature selection, leakage, normalization
+- **expert2**: ranking loss, focal/label noise, backtest overfitting, validation, multi-task
+- **researcher1**: tree vs DL benchmark, CS vs per-stock, regularization, ensemble, non-stationarity
+- **researcher3**: HPO, reproducibility, model decay, experiment management
+
+### 회의
+
+```bash
+# 기본 회의 (LightRAG knowledge + ChromaDB memory + research phase 자동 실행)
 PYTHONPATH="." uv run python alpha_squad/run.py meet "다음 실험 방향은?"
 
 # 추가 컨텍스트 파일 포함
@@ -145,7 +165,25 @@ PYTHONPATH="." uv run python alpha_squad/run.py meet "새로운 아키텍처 탐
 
 # 메모리 없이 실행
 PYTHONPATH="." uv run python alpha_squad/run.py meet "피처 엔지니어링" --no-memory
+```
 
-# Static 리서치 캐시 갱신
+### 기타
+
+```bash
+# Static 리서치 캐시 갱신 (일 1회)
 PYTHONPATH="." uv run python alpha_squad/run.py refresh
+
+# 구 study 명령 (ChromaDB용, deprecated)
+PYTHONPATH="." uv run python alpha_squad/run.py study "tabular deep learning for finance 2025"
+```
+
+### 지식 그래프 상태 확인
+
+```bash
+# 에이전트별 노드/엣지 수 확인
+for agent in expert1 expert2 researcher1 researcher3; do
+    nodes=$(grep -c '<node' alpha_squad/knowledge_store/$agent/graph_chunk_entity_relation.graphml)
+    edges=$(grep -c '<edge' alpha_squad/knowledge_store/$agent/graph_chunk_entity_relation.graphml)
+    echo "$agent: ${nodes} nodes, ${edges} edges"
+done
 ```
