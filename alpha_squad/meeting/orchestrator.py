@@ -18,6 +18,7 @@ from alpha_squad.config import AlphaSquadConfig
 from alpha_squad.llm import ClaudeCLIClient
 from alpha_squad.memory.store import AlphaSquadMemory
 from alpha_squad.knowledge.lightrag_backend import AlphaSquadKnowledge
+from alpha_squad.knowledge.researcher2_pipeline import get_research_context
 from alpha_squad.research.phase import run_research_phase
 from alpha_squad.research.knowledge import recall_knowledge, post_meeting_learn
 
@@ -32,13 +33,14 @@ _AGENT_TO_KNOWLEDGE = {
 }
 
 
-# Meeting flow: who speaks after whom
+# Meeting flow: R2 speaks twice (제안 + 비판 후 반박)
 SPEAKER_ORDER = [
     "Researcher2_AI아키텍처",     # 1. 아이디어 제안
     "Expert1_피처전문가",          # 2. 피처 관점 비판
     "Expert2_문제정의전문가",      # 3. 문제 정의 관점 비판
     "Researcher1_금융모델링",      # 4. 실현 가능성 검토
-    "Researcher3_PM",             # 5. 수용/기각 + 실험 설계
+    "Researcher2_AI아키텍처",     # 5. 반박/보강 (논문 근거)
+    "Researcher3_PM",             # 6. 수용/기각 + 실험 설계
 ]
 
 
@@ -239,6 +241,15 @@ def run_meeting(
     except Exception as e:
         print(f"[AlphaSquad] LightRAG init failed ({e}), proceeding without knowledge base")
 
+    # Researcher2 전용 리서치 파이프라인 (3소스 검색 + Opus 순위)
+    r2_research_context = ""
+    try:
+        print("[AlphaSquad] Researcher2 리서치 파이프라인 실행...")
+        r2_research_context = get_research_context(topic)
+        print(f"  [Researcher2] 리서치 컨텍스트: {len(r2_research_context)} chars")
+    except Exception as e:
+        print(f"  [Researcher2] 리서치 파이프라인 실패: {e}")
+
     # Combine memory + lightrag knowledge + research context per agent
     def _agent_context(name: str) -> str:
         parts = []
@@ -248,13 +259,19 @@ def run_meeting(
             parts.append(knowledge_contexts[name][:2000])
         if lightrag_contexts.get(name):
             parts.append(lightrag_contexts[name])
+        # R2는 전용 리서치 파이프라인 결과를 받음 (다른 에이전트보다 훨씬 많은 컨텍스트)
+        if name == "Researcher2_AI아키텍처" and r2_research_context:
+            parts.append(f"\n{r2_research_context[:10000]}")
         if research_results.get(name):
             parts.append(f"\n[사전 리서치 결과]\n{research_results[name][:3000]}")
         return "\n".join(parts)
 
+    # R2 = opus (연구의 정점), PM = opus, 나머지 = sonnet
+    r2_llm = _build_llm_config(config.pm_model, config.max_tokens)  # opus
+
     # Create agents with research context injected
     agents = [
-        create_researcher2(standard_llm, _agent_context("Researcher2_AI아키텍처")),
+        create_researcher2(r2_llm, _agent_context("Researcher2_AI아키텍처")),
         create_expert1(standard_llm, _agent_context("Expert1_피처전문가")),
         create_expert2(standard_llm, _agent_context("Expert2_문제정의전문가")),
         create_researcher1(standard_llm, _agent_context("Researcher1_금융모델링")),
@@ -272,7 +289,7 @@ def run_meeting(
         messages=[],
         max_round=max_rounds,
         speaker_selection_method=_custom_speaker_selection,
-        allow_repeat_speaker=False,
+        allow_repeat_speaker=True,
     )
 
     manager = GroupChatManager(

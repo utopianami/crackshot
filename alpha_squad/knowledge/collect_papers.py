@@ -31,9 +31,17 @@ CONFERENCES = {
     "ICLR": "International Conference on Learning Representations",
     "KDD": "Knowledge Discovery and Data Mining",
     "AAAI": "AAAI Conference on Artificial Intelligence",
+    "IJCAI": "International Joint Conference on Artificial Intelligence",
+    "WSDM": "Web Search and Data Mining",
+    "WWW": "World Wide Web",
+    "SIGIR": "Annual International ACM SIGIR Conference",
+    "CIKM": "Conference on Information and Knowledge Management",
+    "ECML": "European Conference on Machine Learning",
+    "AISTATS": "Artificial Intelligence and Statistics",
+    "ICAIF": "ACM International Conference on AI in Finance",
 }
 
-YEARS = [2024, 2025]
+YEARS = [2022, 2023, 2024, 2025]
 
 PAPERS_DIR = Path(__file__).parent.parent / "papers"
 PAPERS_INDEX = PAPERS_DIR / "paper_index.json"
@@ -249,20 +257,148 @@ async def build_graph():
     print(f"{'='*60}")
 
 
+# ─── Step 3: Embed abstracts ────────────────────────────────────
+
+EMBEDDINGS_FILE = PAPERS_DIR / "abstract_embeddings.npz"
+
+
+def embed_all():
+    """Embed all collected abstracts using sentence-transformers (local GPU)."""
+    from sentence_transformers import SentenceTransformer
+
+    if not PAPERS_INDEX.exists():
+        print("❌ 논문이 수집되지 않았습니다. 먼저 'collect'를 실행하세요.")
+        return
+
+    index = json.loads(PAPERS_INDEX.read_text())
+    print(f"논문 인덱스: {index['total']}편")
+
+    # Load all abstracts
+    all_texts = []
+    all_meta = []  # (conf_year, paper_idx, title, paperId)
+
+    for conf_year, count in index["counts"].items():
+        conf_file = PAPERS_DIR / f"{conf_year}.json"
+        if not conf_file.exists():
+            continue
+        papers = json.loads(conf_file.read_text())
+        for i, p in enumerate(papers):
+            title = p.get("title", "")
+            abstract = p.get("abstract", "")
+            if not abstract:
+                continue
+            # Embed: title + abstract
+            all_texts.append(f"{title}\n{abstract}")
+            all_meta.append({
+                "conf": conf_year,
+                "idx": i,
+                "title": title,
+                "paperId": p.get("paperId", ""),
+                "year": p.get("year", 0),
+                "venue": p.get("venue", ""),
+                "citations": p.get("citationCount", 0),
+                "arxiv": p.get("externalIds", {}).get("ArXiv", ""),
+            })
+
+    print(f"임베딩할 논문: {len(all_texts)}편")
+
+    # Embed in batches
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    print("임베딩 생성 중...")
+    embeddings = model.encode(
+        all_texts,
+        batch_size=256,
+        show_progress_bar=True,
+        normalize_embeddings=True,
+    )
+
+    # Save
+    np.savez_compressed(
+        EMBEDDINGS_FILE,
+        embeddings=embeddings,
+    )
+    # Save metadata separately (JSON)
+    meta_file = PAPERS_DIR / "abstract_meta.json"
+    meta_file.write_text(json.dumps(all_meta, ensure_ascii=False))
+
+    print(f"\n{'='*60}")
+    print(f"  임베딩 완료: {len(all_texts)}편, shape={embeddings.shape}")
+    print(f"  저장: {EMBEDDINGS_FILE}")
+    print(f"  메타: {meta_file}")
+    print(f"{'='*60}")
+
+
+def search_papers(query: str, top_k: int = 20) -> list[dict]:
+    """Search papers by query using embedding similarity."""
+    from sentence_transformers import SentenceTransformer
+
+    if not EMBEDDINGS_FILE.exists():
+        print("❌ 임베딩이 없습니다. 먼저 'embed'를 실행하세요.")
+        return []
+
+    # Load
+    data = np.load(EMBEDDINGS_FILE)
+    embeddings = data["embeddings"]
+    meta = json.loads((PAPERS_DIR / "abstract_meta.json").read_text())
+
+    # Embed query
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    q_emb = model.encode([query], normalize_embeddings=True)
+
+    # Cosine similarity
+    sims = embeddings @ q_emb.T
+    sims = sims.squeeze()
+
+    # Top-K
+    top_indices = np.argsort(sims)[::-1][:top_k]
+    results = []
+    for idx in top_indices:
+        m = meta[idx]
+        m["score"] = float(sims[idx])
+        results.append(m)
+
+    return results
+
+
+def cmd_search(query: str, top_k: int = 20):
+    """CLI search command."""
+    results = search_papers(query, top_k=top_k)
+    if not results:
+        return
+
+    print(f"\n=== '{query}' 검색 결과 (top {top_k}) ===\n")
+    for i, r in enumerate(results, 1):
+        print(f"{i:2d}. [{r['score']:.3f}] {r['title']}")
+        print(f"    {r['venue']} {r['year']} | citations: {r['citations']} | arXiv: {r['arxiv']}")
+        print()
+
+
 # ─── Main ────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="논문 수집 + 지식 그래프 구축")
-    parser.add_argument("command", choices=["collect", "build", "all"],
-                        help="collect: 논문 수집, build: 그래프 구축, all: 둘 다")
+    parser = argparse.ArgumentParser(description="논문 수집 + 임베딩 + 지식 그래프 구축")
+    parser.add_argument("command", choices=["collect", "embed", "search", "build", "all"],
+                        help="collect: 논문 수집, embed: 임베딩 생성, search: 논문 검색, build: 그래프 구축, all: collect+embed")
+
+    parser.add_argument("query", nargs="?", default=None, help="search 시 검색어")
+    parser.add_argument("--top-k", type=int, default=20, help="search 시 결과 수")
 
     args = parser.parse_args()
 
-    if args.command in ("collect", "all"):
+    if args.command == "collect":
         collect_all()
-
-    if args.command in ("build", "all"):
+    elif args.command == "embed":
+        embed_all()
+    elif args.command == "search":
+        if not args.query:
+            print("검색어를 입력하세요: collect_papers.py search \"query\"")
+            return
+        cmd_search(args.query, top_k=args.top_k)
+    elif args.command == "build":
         asyncio.run(build_graph())
+    elif args.command == "all":
+        collect_all()
+        embed_all()
 
 
 if __name__ == "__main__":
