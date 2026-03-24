@@ -225,7 +225,9 @@ Recommend 10-15 papers. Return ONLY the JSON array. Do not use tools."""
                 results.append({
                     "paperId": f"opus_{_query_hash(p.get('title', ''))}",
                     "title": p.get("title", ""),
-                    "abstract": f"{p.get('key_idea', '')} {p.get('relevance', '')}",
+                    "abstract": "",  # Opus 추천은 abstract 없음 — 나중에 채움
+                    "key_idea": p.get("key_idea", ""),
+                    "relevance": p.get("relevance", ""),
                     "venue": p.get("venue", ""),
                     "year": p.get("year"),
                     "arxiv": p.get("arxiv", ""),
@@ -343,7 +345,7 @@ def _save_paper(paper: dict):
 
 
 def _summarize_paper(paper: dict) -> str:
-    """논문 abstract를 Claude로 요약 (이미 요약이 있으면 재사용)."""
+    """논문 abstract를 Claude로 요약 (이미 요약이 있으면 재사용, abstract 없으면 검색)."""
     pid = paper.get("paperId", "")
     pfile = PAPERS_DIR / f"{pid}.json"
 
@@ -354,10 +356,40 @@ def _summarize_paper(paper: dict) -> str:
             return existing["summary"]
 
     abstract = paper.get("abstract", "")
-    if not abstract:
-        return ""
-
     title = paper.get("title", "")
+    key_idea = paper.get("key_idea", "")
+
+    # abstract 없으면 Claude에게 검색 + 요약 요청
+    if not abstract and title:
+        prompt = f"""Find and summarize this ML paper in 3-4 sentences focusing on: method, key innovation, results.
+
+Title: {title}
+{f"Hint: {key_idea}" if key_idea else ""}
+
+Search the web if needed. Write in English. Be specific about the method name and results."""
+
+        try:
+            result = subprocess.run(
+                ["claude", "-p", "-", "--output-format", "text", "--max-turns", "3",
+                 "--model", "sonnet", "--tools", "WebSearch", "--allowedTools", "WebSearch"],
+                input=prompt, capture_output=True, text=True, timeout=120,
+            )
+            summary = result.stdout.strip()
+            if summary and not summary.startswith("(") and not summary.startswith("Error"):
+                if pfile.exists():
+                    data = json.loads(pfile.read_text())
+                    data["summary"] = summary
+                    pfile.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+                return summary
+        except Exception:
+            pass
+        # Fallback: key_idea가 있으면 사용
+        return key_idea or ""
+
+    if not abstract:
+        return key_idea or ""
+
+    # abstract 있으면 요약
     prompt = f"""Summarize this ML paper in 3-4 sentences focusing on: method, key innovation, results.
 
 Title: {title}
@@ -372,7 +404,6 @@ Write in English. Be specific about the method name and results. Do not use tool
         )
         summary = result.stdout.strip()
         if summary and not summary.startswith("("):
-            # 저장
             if pfile.exists():
                 data = json.loads(pfile.read_text())
                 data["summary"] = summary
@@ -397,14 +428,24 @@ def _generate_context(query: str, ranked_papers: list[dict]) -> str:
         year = p.get("year", "")
         citations = p.get("citations", 0)
         sources = ", ".join(p.get("sources", []))
-        summary = p.get("summary", p.get("abstract", "")[:300])
+        summary = p.get("summary", "")
+        abstract = p.get("abstract", "")
         arxiv = p.get("arxiv", "")
+        key_idea = p.get("key_idea", "")
+        relevance = p.get("relevance", "")
 
         lines.append(f"## {i}. {title}")
         lines.append(f"- Venue: {venue} {year} | Citations: {citations} | Sources: {sources}")
         if arxiv:
             lines.append(f"- arXiv: {arxiv}")
-        lines.append(f"- {summary}")
+        if key_idea:
+            lines.append(f"- Key idea: {key_idea}")
+        if relevance:
+            lines.append(f"- Why relevant: {relevance}")
+        if summary:
+            lines.append(f"- {summary}")
+        elif abstract:
+            lines.append(f"- {abstract[:400]}")
         lines.append("")
 
     return "\n".join(lines)

@@ -293,6 +293,7 @@ def embed_all():
                 "conf": conf_year,
                 "idx": i,
                 "title": title,
+                "abstract": abstract,
                 "paperId": p.get("paperId", ""),
                 "year": p.get("year", 0),
                 "venue": p.get("venue", ""),
