@@ -3,11 +3,20 @@
 KOSPI 트레이딩 모델 개선을 위한 멀티에이전트 연구 회의 시스템.
 AutoGen GroupChat + Claude CLI 기반으로, 5명의 전문 에이전트가 체계적으로 실험 방향을 도출한다.
 
+## 에이전트 구성
+
+| 에이전트 | 역할 | 모델 |
+|---------|------|------|
+| **Researcher2** (AI아키텍처 전문가) | 아이디어 제안 + 반박/보강. 3소스 리서치 파이프라인 보유. **연구의 정점** | Opus |
+| **Expert1** (금융 데이터 피처 전문가) | 피처 관점 비판 (leakage, redundancy, normalization) | Sonnet |
+| **Expert2** (금융 ML 전략 PM) | 문제 정의·loss·평가 관점 비판 | Sonnet |
+| **Researcher1** (금융 데이터 ML 엔지니어) | 실전 경험 기반 실현 가능성 검토 | Sonnet |
+| **Researcher3** (실험 PM) | 종합 판단 + 구체적 실험 스펙 작성 | Opus |
+
 ## 핵심: Researcher2 리서치 파이프라인
 
-Researcher2 (AI아키텍처 전문가)는 연구의 정점이다.
-"이 문제에 어떤 아키텍처를 써야 하는가?"에 대해 **논문 기반으로 근거 있는 제안**을 하기 위해,
-3소스 병렬 검색 + Opus 순위 매기기 + 논문 요약으로 구성된 리서치 파이프라인을 사용한다.
+Researcher2는 "이 문제에 어떤 아키텍처를 써야 하는가?"에 대해 **논문 기반으로 근거 있는 제안**을 한다.
+3소스 병렬 검색 + Opus 순위 매기기 + 논문 요약으로 구성된 리서치 파이프라인을 사용.
 
 ```
 문제 정의 (쿼리)
@@ -59,7 +68,7 @@ research_store/
 ```
 
 - **논문 요약은 한 번만**: 같은 논문이 여러 회의에서 나와도 기존 요약 재사용
-- **이전 결과 제외 검색**: 4소스에 "이전에 찾은 논문 외에 추천해줘"로 요청 → 매번 새 논문 발견
+- **이전 결과 제외 검색**: 3소스에 "이전에 찾은 논문 외에 추천해줘"로 요청 → 매번 새 논문 발견
 - **컨텍스트 캐시**: 유사 주제로 회의하면 이전 리서치 재활용
 
 ### 학회 논문 인덱스
@@ -75,52 +84,52 @@ ICML, NeurIPS, ICLR, KDD, AAAI, IJCAI, WSDM, WWW, SIGIR, CIKM, ECML, AISTATS, IC
 
 ```
 alpha_squad/
-├── run.py                    ← CLI 진입점 (study, meet, refresh)
-├── config.py                 ← AlphaSquadConfig (모델, 경로, context files)
+├── run.py                        ← CLI 진입점 (study, meet, refresh)
+├── config.py                     ← AlphaSquadConfig (모델, 경로, context files)
 │
-├── agents/                   ← 5명의 에이전트 (AutoGen ConversableAgent)
-│   ├── researcher2.py        ← AI아키텍처 리서처 [Opus] ★ 연구의 정점
-│   ├── expert1.py            ← 금융 데이터 피처 전문가
-│   ├── expert2.py            ← 금융 ML 전략 PM (문제정의·loss·평가)
-│   ├── researcher1.py        ← 금융 데이터 ML 엔지니어 (실전 경험)
-│   └── researcher3.py        ← PM (종합 판단 + 실험 스펙 작성) [Opus]
+├── agents/                       ← 5명의 에이전트 (AutoGen ConversableAgent)
+│   ├── researcher2.py            ← Researcher2: AI아키텍처 전문가 [Opus] ★
+│   ├── expert1.py                ← Expert1: 금융 데이터 피처 전문가
+│   ├── expert2.py                ← Expert2: 금융 ML 전략 PM
+│   ├── researcher1.py            ← Researcher1: 금융 데이터 ML 엔지니어
+│   └── researcher3.py            ← Researcher3: 실험 PM [Opus]
 │
-├── knowledge/                ← 지식 시스템
-│   ├── lightrag_backend.py   ← LightRAG + Claude CLI + sentence-transformers
-│   ├── researcher2_pipeline.py ← ★ 3소스 리서치 파이프라인 (핵심)
-│   ├── study_agent.py        ← snowball 웹 검색 지식 수집 (E1,E2,R1,R3용)
-│   ├── collect_papers.py     ← 학회 논문 수집 + 임베딩 + 그래프 구축
-│   └── run_all_study.sh      ← 전체 에이전트 일괄 수집 스크립트
+├── knowledge/                    ← 지식 시스템
+│   ├── researcher2_pipeline.py   ← ★ 3소스 리서치 파이프라인 (핵심)
+│   ├── lightrag_backend.py       ← LightRAG + Claude CLI + sentence-transformers
+│   ├── study_agent.py            ← snowball 웹 검색 지식 수집
+│   ├── collect_papers.py         ← 학회 논문 수집 + 임베딩
+│   └── run_all_study.sh          ← 전체 에이전트 일괄 수집 스크립트
 │
-├── research/                 ← 사전 리서치 페이즈 (기존)
-│   ├── phase.py              ← 5 에이전트 병렬 리서치
-│   └── knowledge.py          ← ChromaDB 지식 축적/회상
+├── research/                     ← 사전 리서치 페이즈
+│   ├── phase.py                  ← 5 에이전트 병렬 리서치
+│   └── knowledge.py              ← ChromaDB 지식 축적/회상
 │
-├── meeting/                  ← 회의 오케스트레이터
-│   └── orchestrator.py       ← AutoGen GroupChat + R2 강화
+├── meeting/                      ← 회의 오케스트레이터
+│   └── orchestrator.py           ← AutoGen GroupChat + Researcher2 강화
 │
-├── llm/                      ← LLM 백엔드
-│   └── claude_client.py      ← Claude CLI 어댑터 (Max 구독)
+├── llm/                          ← LLM 백엔드
+│   └── claude_client.py          ← Claude CLI 어댑터 (Max 구독)
 │
-├── memory/                   ← 회의 메모리 (ChromaDB)
-│   └── store.py              ← ChromaDB (에이전트별 collection)
+├── memory/                       ← 회의 메모리
+│   └── store.py                  ← ChromaDB (에이전트별 collection)
 │
-├── research_store/           ← ★ R2 리서치 결과 누적 저장
-│   ├── papers/               ← 논문 단위 (paperId 기준)
-│   ├── queries/              ← 쿼리별 검색 결과
-│   ├── contexts/             ← 회의용 컨텍스트 캐시 + index.json
+├── research_store/               ← ★ Researcher2 리서치 결과 누적 저장
+│   ├── papers/                   ← 논문 단위 (paperId 기준)
+│   ├── queries/                  ← 쿼리별 검색 결과
+│   ├── contexts/                 ← 회의용 컨텍스트 캐시 + index.json
 │   └── embeddings/
 │
-├── papers/                   ← 학회 논문 인덱스 (42K+ abstract + 임베딩)
+├── papers/                       ← 학회 논문 인덱스 (42K+ abstract + 임베딩)
 │
-├── knowledge_store/          ← LightRAG 에이전트별 지식 그래프
-│   ├── expert1/              ← 1,545 nodes (피처 전문 지식)
-│   ├── expert2/              ← 1,300 nodes (문제정의 전문 지식)
-│   ├── researcher1/          ← 1,261 nodes (금융모델링 전문 지식)
-│   ├── researcher2/          ← 10,122 nodes (ICML 논문 기반, 부분 구축)
-│   └── researcher3/          ← 1,263 nodes (실험관리 전문 지식)
+├── knowledge_store/              ← LightRAG 에이전트별 지식 그래프
+│   ├── expert1/                  ← 1,545 nodes (금융 데이터 피처)
+│   ├── expert2/                  ← 1,300 nodes (금융 ML 전략)
+│   ├── researcher1/              ← 1,261 nodes (금융 ML 실전)
+│   ├── researcher2/              ← 10,122 nodes (AI아키텍처, 부분 구축)
+│   └── researcher3/              ← 1,263 nodes (실험 관리)
 │
-└── memory_store/             ← ChromaDB 영속 저장소
+└── memory_store/                 ← ChromaDB 영속 저장소
     └── chroma/
 ```
 
@@ -130,7 +139,7 @@ alpha_squad/
 ┌─────────────────────────────────────────────────────────────────┐
 │                    PRE-MEETING                                   │
 │                                                                 │
-│  1. Research Phase (기존)                                        │
+│  1. Research Phase                                               │
 │     5 에이전트 병렬 사전 조사 (코드분석, 데이터분석 등)              │
 │                                                                 │
 │  2. Knowledge Recall                                            │
@@ -146,27 +155,27 @@ alpha_squad/
 ┌─────────────────────────────────────────────────────────────────┐
 │                    MEETING: GroupChat                             │
 │                                                                 │
-│  ① Researcher2 (AI아키텍처)    ──→  아이디어 제안 (논문 근거)       │
+│  ① Researcher2 (AI아키텍처 전문가) ──→  아이디어 제안 (논문 근거)  │
 │         │                                                       │
-│  ② Expert1 (금융 피처 전문가)   ──→  피처 관점 비판                 │
+│  ② Expert1 (금융 피처 전문가)      ──→  피처 관점 비판             │
 │         │                                                       │
-│  ③ Expert2 (금융 ML 전략 PM)  ──→  문제 정의·loss·평가 비판         │
+│  ③ Expert2 (금융 ML 전략 PM)     ──→  문제정의·loss·평가 비판      │
 │         │                                                       │
-│  ④ Researcher1 (금융 ML 엔지니어) ──→  실현 가능성 검토             │
+│  ④ Researcher1 (금융 ML 엔지니어) ──→  실현 가능성 검토            │
 │         │                                                       │
-│  ⑤ Researcher2 (AI아키텍처)    ──→  반박/보강 (논문 근거)           │
+│  ⑤ Researcher2 (AI아키텍처 전문가) ──→  반박/보강 (논문 근거)      │
 │         │                                                       │
-│  ⑥ Researcher3 (PM) [Opus]   ──→  수용/기각 + 실험 스펙 작성      │
+│  ⑥ Researcher3 (실험 PM)         ──→  수용/기각 + 실험 스펙 작성  │
 │                                                                 │
 │  ※ --rounds N 으로 이 사이클을 N번 반복                            │
-│  ※ R2는 토론 중 추가 리서치 가능 (3소스 재실행)                     │
+│  ※ Researcher2는 토론 중 추가 리서치 가능 (3소스 재실행)            │
 └────────────────────────┬────────────────────────────────────────┘
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    POST-MEETING                                  │
 │                                                                 │
-│  1. PM 발언에서 실험 스펙 추출                                    │
-│  2. PM 결정 + Expert 비판 → ChromaDB 영속 저장                   │
+│  1. Researcher3 발언에서 실험 스펙 추출                            │
+│  2. 결정 + 비판 → ChromaDB 영속 저장                              │
 │  3. 핵심 인사이트 → Knowledge Base에 축적                         │
 │  4. 전체 회의록 → meetings/meeting_YYYYMMDD.md 저장              │
 └─────────────────────────────────────────────────────────────────┘
@@ -176,13 +185,12 @@ alpha_squad/
 
 | 항목 | 설계 |
 |------|------|
-| **R2 모델** | Opus — 연구의 정점, 가장 강한 모델 |
-| **R2 발언** | 2회/라운드 (제안 + 비판 후 반박) |
-| **R2 컨텍스트** | 10,000+ chars (다른 에이전트의 3배) |
-| **R2 리서치** | 3소스 병렬 + Opus 순위 + 논문 요약 |
-| **PM 모델** | Opus — 최종 결정권자 |
+| **Researcher2** | Opus + 3소스 리서치 + 2회 발언/라운드 + 10,000+ chars 컨텍스트 |
+| **Researcher3** | Opus — 최종 결정권자, 구체적 실험 스펙 작성 |
+| **Expert1, Expert2, Researcher1** | Sonnet — LightRAG 지식 그래프 기반 |
 | **LLM 호출** | `claude` CLI subprocess → Max 구독 그대로 사용 |
-| **지식 기반** | LightRAG (E1,E2,R1,R3) + 3소스 파이프라인 (R2) |
+| **Researcher2 지식** | 3소스 파이프라인 (HyDE+임베딩 / Elicit / Opus 추천) |
+| **나머지 에이전트 지식** | LightRAG 지식 그래프 (hybrid: 벡터+그래프 탐색) |
 | **회의 메모리** | ChromaDB — 회의간 맥락 유지 |
 | **리서치 누적** | research_store/ — 논문 요약/컨텍스트 재활용 |
 
@@ -217,7 +225,9 @@ PYTHONPATH="." uv run python alpha_squad/knowledge/collect_papers.py all
 PYTHONPATH="." uv run python alpha_squad/knowledge/collect_papers.py search "tabular deep learning" --top-k 10
 ```
 
-### 다른 에이전트 지식 수집 (LightRAG)
+### 에이전트 지식 수집 (LightRAG)
+
+Expert1, Expert2, Researcher1, Researcher3용 지식 그래프 구축.
 
 ```bash
 # 특정 에이전트에 특정 주제 수집
@@ -233,7 +243,7 @@ nohup bash alpha_squad/knowledge/run_all_study.sh > alpha_squad/study_all.log 2>
 ### 회의
 
 ```bash
-# 기본 회의 (R2 리서치 + LightRAG + ChromaDB + research phase 자동 실행)
+# 기본 회의 (Researcher2 리서치 + LightRAG + ChromaDB + research phase 자동)
 PYTHONPATH="." uv run python alpha_squad/run.py meet "다음 실험 방향은?"
 
 # 추가 컨텍스트 파일 포함
