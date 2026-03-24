@@ -82,7 +82,7 @@ alpha_squad/
 │   ├── researcher2.py        ← AI아키텍처 리서처 [Opus] ★ 연구의 정점
 │   ├── expert1.py            ← 금융 데이터 피처 전문가
 │   ├── expert2.py            ← 금융 ML 전략 PM (문제정의·loss·평가)
-│   ├── researcher1.py        ← 금융 시계열 ML 엔지니어
+│   ├── researcher1.py        ← 금융 데이터 ML 엔지니어 (실전 경험)
 │   └── researcher3.py        ← PM (종합 판단 + 실험 스펙 작성) [Opus]
 │
 ├── knowledge/                ← 지식 시스템
@@ -152,7 +152,7 @@ alpha_squad/
 │         │                                                       │
 │  ③ Expert2 (금융 ML 전략 PM)  ──→  문제 정의·loss·평가 비판         │
 │         │                                                       │
-│  ④ Researcher1 (금융모델링)    ──→  실현 가능성 검토               │
+│  ④ Researcher1 (금융 ML 엔지니어) ──→  실현 가능성 검토             │
 │         │                                                       │
 │  ⑤ Researcher2 (AI아키텍처)    ──→  반박/보강 (논문 근거)           │
 │         │                                                       │
