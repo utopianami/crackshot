@@ -80,8 +80,8 @@ alpha_squad/
 │
 ├── agents/                   ← 5명의 에이전트 (AutoGen ConversableAgent)
 │   ├── researcher2.py        ← AI아키텍처 리서처 [Opus] ★ 연구의 정점
-│   ├── expert1.py            ← 피처 엔지니어링 전문가
-│   ├── expert2.py            ← 실험 설계 전문가
+│   ├── expert1.py            ← 금융 데이터 피처 전문가
+│   ├── expert2.py            ← 금융 ML 전략 PM (문제정의·loss·평가)
 │   ├── researcher1.py        ← 금융 시계열 ML 엔지니어
 │   └── researcher3.py        ← PM (종합 판단 + 실험 스펙 작성) [Opus]
 │
@@ -148,9 +148,9 @@ alpha_squad/
 │                                                                 │
 │  ① Researcher2 (AI아키텍처)    ──→  아이디어 제안 (논문 근거)       │
 │         │                                                       │
-│  ② Expert1 (피처전문가)        ──→  피처 관점 비판                 │
+│  ② Expert1 (금융 피처 전문가)   ──→  피처 관점 비판                 │
 │         │                                                       │
-│  ③ Expert2 (문제정의전문가)    ──→  문제 정의 관점 비판             │
+│  ③ Expert2 (금융 ML 전략 PM)  ──→  문제 정의·loss·평가 비판         │
 │         │                                                       │
 │  ④ Researcher1 (금융모델링)    ──→  실현 가능성 검토               │
 │         │                                                       │
