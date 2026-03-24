@@ -417,37 +417,74 @@ Write in English. Be specific about the method name and results. Do not use tool
 # ─── Context generation ────────────────────────────────────────
 
 def _generate_context(query: str, ranked_papers: list[dict]) -> str:
-    """회의용 최종 컨텍스트 생성."""
-    lines = [f"# Research Context: {query}\n"]
-    lines.append(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-    lines.append(f"Papers found: {len(ranked_papers)}\n")
+    """회의용 최종 컨텍스트 생성 — Opus가 논문들을 종합 정리."""
 
+    # 논문 정보를 텍스트로 모으기
+    papers_text = ""
     for i, p in enumerate(ranked_papers, 1):
         title = p.get("title", "")
         venue = p.get("venue", "")
         year = p.get("year", "")
         citations = p.get("citations", 0)
-        sources = ", ".join(p.get("sources", []))
         summary = p.get("summary", "")
         abstract = p.get("abstract", "")
-        arxiv = p.get("arxiv", "")
         key_idea = p.get("key_idea", "")
         relevance = p.get("relevance", "")
+        arxiv = p.get("arxiv", "")
 
-        lines.append(f"## {i}. {title}")
-        lines.append(f"- Venue: {venue} {year} | Citations: {citations} | Sources: {sources}")
+        content = summary or abstract[:400] or key_idea or ""
+        papers_text += f"\n[{i}] {title} ({venue} {year}, {citations} citations)"
         if arxiv:
-            lines.append(f"- arXiv: {arxiv}")
-        if key_idea:
-            lines.append(f"- Key idea: {key_idea}")
+            papers_text += f" arXiv:{arxiv}"
+        papers_text += f"\n{content}\n"
+        if key_idea and not summary:
+            papers_text += f"Key idea: {key_idea}\n"
         if relevance:
-            lines.append(f"- Why relevant: {relevance}")
-        if summary:
-            lines.append(f"- {summary}")
-        elif abstract:
-            lines.append(f"- {abstract[:400]}")
-        lines.append("")
+            papers_text += f"Relevance: {relevance}\n"
 
+    prompt = f"""You are writing a research briefing for an AI architecture expert who will participate in a meeting about:
+
+"{query}"
+
+Below are {len(ranked_papers)} relevant papers found from multiple sources. Synthesize them into a structured briefing.
+
+Papers:
+{papers_text}
+
+Write the briefing in this structure:
+1. **Problem Analysis**: What are the core challenges of this problem? (2-3 sentences)
+2. **Approach Categories**: Group the papers into 3-5 categories by approach type. For each category:
+   - Category name and key principle
+   - Representative papers (title, year) with 1-sentence description
+   - Strengths and limitations
+3. **Key Insights**: What cross-cutting insights emerge from these papers? (3-5 bullet points)
+4. **Recommendation**: Based on the papers, what approach(es) seem most promising and why?
+5. **Paper References**: List all papers with title, venue, year, arXiv (for citation)
+
+Write in English. Be specific about method names and results. Do not use tools."""
+
+    try:
+        result = subprocess.run(
+            ["claude", "-p", "-", "--output-format", "text", "--max-turns", "1", "--model", "opus"],
+            input=prompt, capture_output=True, text=True, timeout=300,
+        )
+        context = result.stdout.strip()
+        if context and not context.startswith("(") and not context.startswith("Error"):
+            header = f"# Research Context: {query}\n\nDate: {datetime.now().strftime('%Y-%m-%d')}\nPapers analyzed: {len(ranked_papers)}\n\n"
+            return header + context
+    except Exception as e:
+        print(f"  ⚠️ Context synthesis failed: {e}")
+
+    # Fallback: 기존 나열 방식
+    lines = [f"# Research Context: {query}\n"]
+    lines.append(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+    lines.append(f"Papers found: {len(ranked_papers)}\n")
+    for i, p in enumerate(ranked_papers, 1):
+        title = p.get("title", "")
+        summary = p.get("summary", p.get("abstract", "")[:300])
+        lines.append(f"## {i}. {title}")
+        lines.append(f"- {summary}")
+        lines.append("")
     return "\n".join(lines)
 
 
