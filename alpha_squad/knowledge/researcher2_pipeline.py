@@ -151,10 +151,14 @@ def _search_elicit(query: str, max_results: int = 30) -> list[dict]:
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 AlphaSquad/1.0",
             },
         )
         with urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode())
+            raw = json.loads(resp.read().decode())
+
+        # 응답이 {"papers": [...]} 또는 [...] 형태
+        data = raw.get("papers", raw) if isinstance(raw, dict) else raw
 
         results = []
         for p in data:

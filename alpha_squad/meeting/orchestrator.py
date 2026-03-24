@@ -59,21 +59,22 @@ def _build_llm_config(model: str, max_tokens: int) -> dict:
 
 
 def _custom_speaker_selection(last_speaker, groupchat):
-    """Enforce the meeting flow order, allowing multiple rounds."""
+    """Enforce the meeting flow order, allowing multiple rounds.
+
+    R2가 SPEAKER_ORDER에 2번 나오므로, 발언 횟수로 현재 위치를 추적.
+    """
     agents_by_name = {a.name: a for a in groupchat.agents}
     messages = groupchat.messages
 
     if not messages or last_speaker is None:
         return agents_by_name[SPEAKER_ORDER[0]]
 
-    last_name = last_speaker.name
-    try:
-        idx = SPEAKER_ORDER.index(last_name)
-        next_idx = (idx + 1) % len(SPEAKER_ORDER)
-    except ValueError:
-        next_idx = 0
+    # 현재까지 발언 수 = SPEAKER_ORDER에서의 현재 위치
+    # kickoff 메시지 제외 (role=user인 것 제외)
+    agent_messages = [m for m in messages if m.get("role") != "user"]
+    current_pos = len(agent_messages) % len(SPEAKER_ORDER)
 
-    return agents_by_name[SPEAKER_ORDER[next_idx]]
+    return agents_by_name[SPEAKER_ORDER[current_pos]]
 
 
 def _load_context(config: AlphaSquadConfig) -> str:
