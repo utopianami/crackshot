@@ -216,24 +216,33 @@ SEED_TOPICS = {
         "cross-sectional normalization z-score rank transform financial data",
     ],
     "expert2": [
-        "ListNet LambdaRank ranking loss learning to rank financial prediction",
-        "focal loss label noise handling low SNR financial machine learning",
-        "backtest overfitting deflated Sharpe ratio CSCV probability",
-        "walk-forward validation purged k-fold time series cross-validation finance",
-        "multi-task multi-horizon prediction financial deep learning",
+        # 퀀트 PM — 금융+DL 전반을 아우르는 전략가
+        "quantitative trading strategy design systematic alpha research process",
+        "factor investing smart beta portfolio construction risk parity",
+        "statistical arbitrage pairs trading market neutral strategy",
+        "portfolio risk management drawdown control position sizing Kelly criterion",
+        "machine learning alpha signal combination portfolio optimization",
+        "quant fund workflow research to production pipeline alpha lifecycle",
+        "market microstructure impact cost slippage execution optimization",
     ],
     "researcher1": [
-        "tree-based vs deep learning tabular data benchmark 2024 2025",
-        "cross-sectional vs per-stock learning financial prediction tradeoff",
-        "regularization deep learning financial data dropout weight decay label smoothing",
-        "ensemble methods financial ML feature diversity model diversity stacking",
-        "non-stationarity regime change adaptive learning financial time series",
+        # 금융 DL 실전 경험자 — 주식 데이터로 DL 돌려본 사람
+        "deep learning stock return prediction 2024 2025 state of the art",
+        "TabNet FT-Transformer TabM tabular deep learning financial data comparison",
+        "intraday stock prediction minute-level features deep learning",
+        "cross-sectional stock return prediction neural network practical lessons",
+        "financial time series non-stationarity domain adaptation transfer learning",
+        "label noise low signal-to-noise ratio stock prediction deep learning tricks",
+        "batch ensemble snapshot ensemble deep ensemble financial prediction",
     ],
     "researcher3": [
-        "hyperparameter optimization Bayesian Hyperband multi-fidelity efficient",
-        "reproducibility statistical significance financial ML experiments",
-        "model decay monitoring concept drift detection reference ML",
-        "experiment management MLflow Weights-and-Biases ablation study design",
+        # 실험 PM — 전체 매니징, 의사결정
+        "ML experiment prioritization decision framework resource allocation",
+        "ablation study design best practices deep learning research methodology",
+        "when to stop training early stopping patience model selection criteria",
+        "statistical significance testing model comparison paired t-test bootstrap",
+        "experiment reproducibility seed sensitivity variance estimation ML",
+        "multi-objective optimization Pareto frontier model selection tradeoffs",
     ],
 }
 
