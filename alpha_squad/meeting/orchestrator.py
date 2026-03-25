@@ -58,23 +58,24 @@ def _build_llm_config(model: str, max_tokens: int) -> dict:
     }
 
 
-def _custom_speaker_selection(last_speaker, groupchat):
-    """Enforce the meeting flow order, allowing multiple rounds.
+def _make_speaker_selector():
+    """Create a stateful speaker selector that advances through SPEAKER_ORDER.
 
-    R2가 SPEAKER_ORDER에 2번 나오므로, 발언 횟수로 현재 위치를 추적.
+    메시지 카운트 대신 호출 횟수 기반으로 다음 발언자를 결정.
+    이전 방식(len(agent_messages) % N)은 AutoGen이 에러/시스템 메시지를
+    추가할 때 카운트가 깨져서 같은 에이전트만 반복 선택되는 버그가 있었음.
     """
-    agents_by_name = {a.name: a for a in groupchat.agents}
-    messages = groupchat.messages
+    state = {"call_count": 0}
 
-    if not messages or last_speaker is None:
-        return agents_by_name[SPEAKER_ORDER[0]]
+    def selector(last_speaker, groupchat):
+        agents_by_name = {a.name: a for a in groupchat.agents}
+        pos = state["call_count"] % len(SPEAKER_ORDER)
+        state["call_count"] += 1
+        next_speaker = agents_by_name[SPEAKER_ORDER[pos]]
+        print(f"  [Speaker] Turn {state['call_count']}: {SPEAKER_ORDER[pos]}")
+        return next_speaker
 
-    # 현재까지 발언 수 = SPEAKER_ORDER에서의 현재 위치
-    # kickoff 메시지 제외 (role=user인 것 제외)
-    agent_messages = [m for m in messages if m.get("role") != "user"]
-    current_pos = len(agent_messages) % len(SPEAKER_ORDER)
-
-    return agents_by_name[SPEAKER_ORDER[current_pos]]
+    return selector
 
 
 def _load_context(config: AlphaSquadConfig) -> str:
@@ -289,7 +290,7 @@ def run_meeting(
         agents=agents,
         messages=[],
         max_round=max_rounds,
-        speaker_selection_method=_custom_speaker_selection,
+        speaker_selection_method=_make_speaker_selector(),
         allow_repeat_speaker=True,
     )
 
