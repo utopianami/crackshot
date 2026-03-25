@@ -610,21 +610,11 @@ def run_research(query: str) -> dict:
 
 
 def get_research_context(query: str) -> str:
-    """회의 시 호출: 이전 리서치가 있으면 재활용, 없으면 새로 실행."""
-    index = _load_index()
+    """회의 시 호출: 항상 새로 리서치 실행.
 
-    # 유사한 이전 리서치 찾기
-    query_words = set(query.lower().split())
-    for entry in reversed(index):  # 최신 먼저
-        entry_kw = set(entry.get("keywords", []))
-        overlap = len(entry_kw & query_words)
-        if overlap >= 2:
-            ctx_file = CONTEXTS_DIR / entry["file"]
-            if ctx_file.exists():
-                print(f"[Researcher2] 이전 리서치 재활용: {entry['topic']} ({entry['date']})")
-                return ctx_file.read_text()
-
-    # 없으면 새로 실행
+    이전 리서치 결과는 run_research 내부에서 중복 논문 제외용으로만 활용.
+    캐시 재활용은 회의 품질을 떨어뜨리므로 하지 않는다.
+    """
     print("[Researcher2] 새 리서치 실행...")
     result = run_research(query)
     return result["context"]
