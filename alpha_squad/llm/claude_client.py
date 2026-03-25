@@ -48,7 +48,6 @@ class ClaudeCLIClient:
                     "claude",
                     "-p", prompt,
                     "--output-format", "text",
-                    "--max-turns", "1",
                 ],
                 capture_output=True,
                 text=True,
