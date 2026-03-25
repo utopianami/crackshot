@@ -217,40 +217,51 @@ def post_meeting_learn(
         memory = AlphaSquadMemory()
 
     saved = []
+    saved_agents: dict[str, str] = {}  # name → type (에이전트당 1건만 저장, 가장 긴 발언)
     date = datetime.now().strftime("%Y-%m-%d")
 
+    # 에이전트별 가장 긴 발언을 선택
+    best_per_agent: dict[str, tuple[str, str]] = {}  # name → (type, content)
     for msg in messages:
         name = msg.get("name", "")
         content = msg.get("content", "")
         if not content or len(content) < 100:
             continue
 
-        # PM decisions — always save
         if name == "Researcher3_PM":
+            msg_type = "decision"
+        elif "Expert" in name and len(content) > 300:
+            msg_type = "critique"
+        elif "Researcher" in name and len(content) > 300:
+            msg_type = "insight"
+        else:
+            continue
+
+        prev = best_per_agent.get(name)
+        if prev is None or len(content) > len(prev[1]):
+            best_per_agent[name] = (msg_type, content)
+
+    # 에이전트당 최고 발언 1건만 저장
+    for name, (msg_type, content) in best_per_agent.items():
+        if msg_type == "decision":
             memory.add(
                 agent_name=name,
                 content=f"[{date}] 회의 결정 — {topic}\n\n{content[:2000]}",
                 metadata={"type": "decision", "topic": topic, "date": date},
             )
-            saved.append(f"[{name}] decision")
-
-        # Expert critiques — save substantial ones
-        elif "Expert" in name and len(content) > 300:
+        elif msg_type == "critique":
             memory.add(
                 agent_name=name,
                 content=f"[{date}] 비판/제안 — {topic}\n\n{content[:1500]}",
                 metadata={"type": "critique", "topic": topic, "date": date},
             )
-            saved.append(f"[{name}] critique")
-
-        # Researcher insights — save when they contain concrete analysis
-        elif "Researcher" in name and len(content) > 300:
+        else:
             memory.add(
                 agent_name=name,
                 content=f"[{date}] 분석 — {topic}\n\n{content[:1500]}",
                 metadata={"type": "insight", "topic": topic, "date": date},
             )
-            saved.append(f"[{name}] insight")
+        saved.append(f"[{name}] {msg_type}")
 
     print(f"[Knowledge] Post-meeting: stored {len(saved)} insights in Mem0")
     return saved
