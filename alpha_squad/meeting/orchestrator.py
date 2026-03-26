@@ -170,6 +170,7 @@ def run_meeting(
     extra_context: str = "",
     use_memory: bool = True,
     rounds: int = 2,
+    skip_r2_research: bool = False,
 ) -> dict:
     """Run an AlphaSquad research meeting.
 
@@ -246,9 +247,21 @@ def run_meeting(
     # Researcher2 전용 리서치 파이프라인 (3소스 검색 + Opus 순위)
     r2_research_context = ""
     try:
-        print("[AlphaSquad] Researcher2 리서치 파이프라인 실행...")
-        r2_research_context = get_research_context(topic)
-        print(f"  [Researcher2] 리서치 컨텍스트: {len(r2_research_context)} chars")
+        if skip_r2_research:
+            # 최신 캐시된 컨텍스트 재사용
+            ctx_dir = Path(__file__).parent.parent / "research_store" / "contexts"
+            ctx_files = sorted(ctx_dir.glob("*.md"), reverse=True)
+            md_files = [f for f in ctx_files if f.name != "index.json"]
+            if md_files:
+                r2_research_context = md_files[0].read_text(encoding="utf-8")
+                print(f"  [Researcher2] 캐시된 리서치 재사용: {md_files[0].name} ({len(r2_research_context)} chars)")
+            else:
+                print("  [Researcher2] 캐시 없음 — 새 리서치 실행")
+                r2_research_context = get_research_context(topic)
+        else:
+            print("[AlphaSquad] Researcher2 리서치 파이프라인 실행...")
+            r2_research_context = get_research_context(topic)
+            print(f"  [Researcher2] 리서치 컨텍스트: {len(r2_research_context)} chars")
     except Exception as e:
         print(f"  [Researcher2] 리서치 파이프라인 실패: {e}")
 
@@ -268,16 +281,77 @@ def run_meeting(
             parts.append(f"\n[사전 리서치 결과]\n{research_results[name][:3000]}")
         return "\n".join(parts)
 
+    # Build per-agent project context from static cache
+    # (replaces hardcoded stats that were previously in agent system prompts)
+    static = research_results  # static cache is already in research_results from run_research_phase
+    def _project_context(name: str) -> str:
+        parts = []
+        # Common: experiment results + latest research
+        if static.get("Researcher1_금융모델링"):
+            # Extract experiment results and model config from R1's research
+            r1_data = static["Researcher1_금융모델링"]
+            if "[실험 결과]" in r1_data:
+                results_section = r1_data.split("[실험 결과]")[1].split("[")[0]
+                parts.append(f"[실험 결과]\n{results_section[:2000]}")
+            if "[현재 SOTA Config]" in r1_data:
+                config_section = r1_data.split("[현재 SOTA Config]")[1].split("[")[0]
+                parts.append(f"[현재 SOTA Config]\n{config_section[:1500]}")
+
+        if name == "Researcher1_금융모델링":
+            if static.get("Researcher1_금융모델링"):
+                if "[최신 실험 기록]" in static["Researcher1_금융모델링"]:
+                    latest = static["Researcher1_금융모델링"].split("[최신 실험 기록]")[1].split("[")[0]
+                    parts.append(f"[최신 실험 기록]\n{latest[:2000]}")
+
+        elif name == "Researcher2_AI아키텍처":
+            if static.get("Researcher3_PM"):
+                pm_data = static["Researcher3_PM"]
+                if "[코드베이스 구조]" in pm_data:
+                    codebase = pm_data.split("[코드베이스 구조]")[1].split("[")[0]
+                    parts.append(f"[코드베이스 구조]\n{codebase[:1500]}")
+
+        elif name == "Researcher3_PM":
+            if static.get("Researcher3_PM"):
+                pm_data = static["Researcher3_PM"]
+                if "[코드베이스 구조]" in pm_data:
+                    codebase = pm_data.split("[코드베이스 구조]")[1].split("[")[0]
+                    parts.append(f"[코드베이스 구조]\n{codebase[:1500]}")
+                if "[프로젝트 제약]" in pm_data:
+                    constraints = pm_data.split("[프로젝트 제약]")[1].split("[")[0]
+                    parts.append(f"[프로젝트 제약]\n{constraints[:1500]}")
+
+        elif name == "Expert1_피처전문가":
+            if static.get("Expert1_피처전문가"):
+                e1_data = static["Expert1_피처전문가"]
+                if "[피처 데이터 분석]" in e1_data:
+                    feat = e1_data.split("[피처 데이터 분석]")[1].split("[")[0]
+                    parts.append(f"[피처 데이터 분석]\n{feat[:2000]}")
+                if "[피처 문서]" in e1_data:
+                    docs = e1_data.split("[피처 문서]")[1].split("[")[0]
+                    parts.append(f"[피처 문서]\n{docs[:1500]}")
+
+        elif name == "Expert2_문제정의전문가":
+            if static.get("Expert2_문제정의전문가"):
+                e2_data = static["Expert2_문제정의전문가"]
+                if "[Loss 구현]" in e2_data:
+                    loss = e2_data.split("[Loss 구현]")[1].split("[")[0]
+                    parts.append(f"[Loss 구현]\n{loss[:1500]}")
+                if "[Label 분포]" in e2_data:
+                    label = e2_data.split("[Label 분포]")[1].split("[")[0]
+                    parts.append(f"[Label 분포]\n{label[:1500]}")
+
+        return "\n\n".join(parts) if parts else "(프로젝트 데이터 로딩 중)"
+
     # R2 = opus (연구의 정점), PM = opus, 나머지 = sonnet
     r2_llm = _build_llm_config(config.pm_model, config.max_tokens)  # opus
 
-    # Create agents with research context injected
+    # Create agents with dynamic project context + memory context
     agents = [
-        create_researcher2(r2_llm, _agent_context("Researcher2_AI아키텍처")),
-        create_expert1(standard_llm, _agent_context("Expert1_피처전문가")),
-        create_expert2(standard_llm, _agent_context("Expert2_문제정의전문가")),
-        create_researcher1(standard_llm, _agent_context("Researcher1_금융모델링")),
-        create_researcher3(pm_llm, _agent_context("Researcher3_PM")),
+        create_researcher2(r2_llm, _agent_context("Researcher2_AI아키텍처"), _project_context("Researcher2_AI아키텍처")),
+        create_expert1(standard_llm, _agent_context("Expert1_피처전문가"), _project_context("Expert1_피처전문가")),
+        create_expert2(standard_llm, _agent_context("Expert2_문제정의전문가"), _project_context("Expert2_문제정의전문가")),
+        create_researcher1(standard_llm, _agent_context("Researcher1_금융모델링"), _project_context("Researcher1_금융모델링")),
+        create_researcher3(pm_llm, _agent_context("Researcher3_PM"), _project_context("Researcher3_PM")),
     ]
 
     # Register custom client on all agents

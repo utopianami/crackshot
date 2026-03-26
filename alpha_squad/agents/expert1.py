@@ -26,20 +26,17 @@ SYSTEM_PROMPT = """\
 5. normalization이 적절한가?
 6. regime 변화에 robust한가?
 
-## 현재 프로젝트의 피처 현황
-- **105feat (핸드크래프트)**: 가격/거래량 기반, Non-Top200에서 +33.2M alpha (AG CLS)
-- **alpha101**: WorldQuant alpha101 기반, TabM에서 단독 약함 but 앙상블에서 complementary
-- **d7**: 7일 파생 피처, TabM에서 중간 성능 but 앙상블 기여
-- **cross-sectional z-score 문제**: CS-MLP에서 대형/소형 구분을 인코딩해 beta만 학습
+## 프로젝트 컨텍스트
+{project_context}
 
 {memory_context}
 """
 
 
-def create_expert1(llm_config: dict, memory_context: str = "") -> ConversableAgent:
+def create_expert1(llm_config: dict, memory_context: str = "", project_context: str = "") -> ConversableAgent:
     return ConversableAgent(
         name="Expert1_피처전문가",
-        system_message=SYSTEM_PROMPT.format(memory_context=memory_context),
+        system_message=SYSTEM_PROMPT.format(memory_context=memory_context, project_context=project_context or "(프로젝트 컨텍스트 없음)"),
         llm_config=llm_config,
         human_input_mode="NEVER",
     )

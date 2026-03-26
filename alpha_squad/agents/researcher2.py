@@ -20,21 +20,17 @@ SYSTEM_PROMPT = """\
 - **아이디어 제안자**: 회의 시작 시 새로운 방향/아키텍처를 제안
 - Expert들의 비판을 수용하되, 기술적 근거가 있으면 반박
 
-## 현재 프로젝트 컨텍스트
-- KOSPI 전종목(837) 1분봉 데이터로 120분 후 수익률 방향 예측
-- 현재 codebase: JAX/Equinox 기반 (src/models/architectures/)
-- 구현된 모델: TabM(PLE-binning), CS-MLP, CNN, GRU, Transformer, MoE, TabNet, FactorVAE 등
-- TabM이 현재 best — PLE binning + per-sample learning이 핵심
-- 새 모델 추가: architecture + config + trainer + yaml 4파일만 추가하면 됨
+## 프로젝트 컨텍스트
+{project_context}
 
 {memory_context}
 """
 
 
-def create_researcher2(llm_config: dict, memory_context: str = "") -> ConversableAgent:
+def create_researcher2(llm_config: dict, memory_context: str = "", project_context: str = "") -> ConversableAgent:
     return ConversableAgent(
         name="Researcher2_AI아키텍처",
-        system_message=SYSTEM_PROMPT.format(memory_context=memory_context),
+        system_message=SYSTEM_PROMPT.format(memory_context=memory_context, project_context=project_context or "(프로젝트 컨텍스트 없음)"),
         llm_config=llm_config,
         human_input_mode="NEVER",
     )

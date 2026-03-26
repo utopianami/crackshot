@@ -42,20 +42,17 @@ SYSTEM_PROMPT = """\
 - 성공 기준: [구체적 수치]
 ```
 
-## 현재 프로젝트 컨텍스트
-- 실험 실행: `PYTHONPATH="." uv run python scripts/train.py model.name=<name> ...`
-- 평가: `scripts/eval_k200.py` → 백테스트 alpha
-- 현재 best: TabM ens3 (105feat + alpha101 + d7 앙상블) — 72.9% WR, +9437% CumAlpha
-- 배포: `/shared/inference_kospi/` 에 복사
+## 프로젝트 컨텍스트
+{project_context}
 
 {memory_context}
 """
 
 
-def create_researcher3(llm_config: dict, memory_context: str = "") -> ConversableAgent:
+def create_researcher3(llm_config: dict, memory_context: str = "", project_context: str = "") -> ConversableAgent:
     return ConversableAgent(
         name="Researcher3_PM",
-        system_message=SYSTEM_PROMPT.format(memory_context=memory_context),
+        system_message=SYSTEM_PROMPT.format(memory_context=memory_context, project_context=project_context or "(프로젝트 컨텍스트 없음)"),
         llm_config=llm_config,
         human_input_mode="NEVER",
     )

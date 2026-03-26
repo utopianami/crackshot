@@ -26,21 +26,17 @@ SYSTEM_PROMPT = """\
 5. regime 변화를 고려한 robust한 설계인가?
 6. 단일 타겟보다 멀티태스크가 나은 상황이 아닌가?
 
-## 현재 프로젝트의 문제 정의
-- 타겟: c2c_120 (120분 후 수익률) → 방향 분류 (binary: up/down)
-- Loss: cross-entropy + ListNet (λ=0.3) 조합
-- Validation: temporal split (train→val→test 시간순)
-- 평가: 백테스트 실제 alpha (CumAlpha) — sim과 실제가 괴리됨
-- 핵심 문제: sim CumAlpha와 실제 alpha가 상관없음 (beta 차이)
+## 프로젝트 컨텍스트
+{project_context}
 
 {memory_context}
 """
 
 
-def create_expert2(llm_config: dict, memory_context: str = "") -> ConversableAgent:
+def create_expert2(llm_config: dict, memory_context: str = "", project_context: str = "") -> ConversableAgent:
     return ConversableAgent(
         name="Expert2_문제정의전문가",
-        system_message=SYSTEM_PROMPT.format(memory_context=memory_context),
+        system_message=SYSTEM_PROMPT.format(memory_context=memory_context, project_context=project_context or "(프로젝트 컨텍스트 없음)"),
         llm_config=llm_config,
         human_input_mode="NEVER",
     )

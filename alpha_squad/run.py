@@ -72,6 +72,7 @@ def cmd_meet(args):
         extra_context=extra_context,
         use_memory=not args.no_memory,
         rounds=args.rounds,
+        skip_r2_research=args.skip_research,
     )
 
     print("\n" + "=" * 60)
@@ -116,6 +117,7 @@ def main():
     p_meet.add_argument("--rounds", type=int, default=2, help="Discussion rounds (default: 2)")
     p_meet.add_argument("--context-file", type=str, help="Extra context file")
     p_meet.add_argument("--no-memory", action="store_true", help="Disable Mem0")
+    p_meet.add_argument("--skip-research", action="store_true", help="Skip Researcher2 new paper search, reuse latest cached context")
     p_meet.add_argument("--model", type=str, default=None, help="Override LLM model")
     p_meet.add_argument("--pm-model", type=str, default=None, help="Override PM model")
 
