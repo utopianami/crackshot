@@ -1,8 +1,16 @@
 """공통 configuration dataclasses."""
 
 from dataclasses import dataclass, field
+from typing import Any
 
-from src.config.data import Kospi260306Config  # noqa: F401
+
+@dataclass
+class DatasetConfig:
+    """KOSPI NPY 공통 dataset 설정 (30-label 기준 기본값)."""
+    horizon_indices: list = field(default_factory=lambda: [17, 21, 25])
+    primary_horizon: int = 1
+    vol_idx: int = -1
+    class_bins: list = field(default_factory=lambda: [-0.01, -0.003, 0.003, 0.01])
 
 
 @dataclass
@@ -11,7 +19,7 @@ class DataConfig:
     data_path: str = ""
     symbols: list[str] = field(default_factory=list)
     exclude_symbols: list[str] = field(default_factory=list)
-    target_labels: list[str] = field(default_factory=lambda: ["log_diff_m2m_30"])
+    target_labels: list[str] = field(default_factory=list)
     feature_selection: str = "all"
     mode: str = "tabular"  # "tabular" | "sequence"
     seq_len: int = 1
@@ -44,6 +52,6 @@ class Config:
     """Root configuration."""
     seed: int = 42
     data: DataConfig = field(default_factory=DataConfig)
-    dataset: Kospi260306Config = field(default_factory=Kospi260306Config)
+    dataset: DatasetConfig = field(default_factory=DatasetConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)

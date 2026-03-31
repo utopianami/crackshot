@@ -3,6 +3,7 @@
 from src.config.common import (
     Config,
     DataConfig,
+    DatasetConfig,
     ModelConfig,
     PathsConfig,
 )
@@ -65,6 +66,7 @@ def load_config(
 __all__ = [
     "Config",
     "DataConfig",
+    "DatasetConfig",
     "Kospi260306Config",
     "ModelConfig",
     "PathsConfig",

@@ -12,7 +12,7 @@
 | `dont_repeat.md` | 반복 금지 (실패한 실험 + 실수) |
 | `request.md` | 수정/인프라 요청 |
 | `autoresearch/YYYY-MM-DD.md` | 일일 실험 계획 + 결과 |
-| `BRAIN/codebase_architecture.md` | 코드 구조 |
+| `BRAIN/codebase_architecture.md` | 코드 구조 (프로젝트 루트 기준) |
 
 ---
 
