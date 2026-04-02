@@ -29,7 +29,11 @@ log = logging.getLogger(__name__)
 
 def _log_eval_cls(probs, actual, prefix=""):
     """Log evaluation for classification models (probs [N,5], actual [N] raw returns)."""
-    from scripts.evaluate_topk import compute_score, topk_stats
+    try:
+        from scripts.evaluate_topk import compute_score, topk_stats
+    except ImportError:
+        log.warning(f"{prefix}evaluate_topk not found, skipping topk eval")
+        return
     score = compute_score(probs)
     # Filter vol==0 and c2c_120==0
     mask = actual != 0

@@ -1,1 +1,5 @@
 dataset,date,model,direction,L_CumAlpha,LS_CumAlpha,L_WR,L_Trades,status,description,inference_path
+260401_200_all,2026-04-02,cs_mlp,L+S,524,865,55.0,2740,discard,Phase1 1-1: CS-MLP all(155feat) CE+pnl_weight=2.0 sr=0.05. Backtest all zscore negative alpha.,outputs/inference/cs_mlp_20260402_092004
+260401_200_all,2026-04-02,ft_transformer,L+S,155,344,52.4,1177,discard,Phase1 1-2: FT-Transformer all(155feat) CE+pnl_weight=2.0 sr=0.05. Backtest all zscore negative.,outputs/inference/ft_transformer_20260402_100436
+260401_200_all,2026-04-02,tab_m,L+S,-17,-40,45.3,7382,discard,Phase1 1-3: Tab-M all(155feat) CE+pnl_weight=2.0 sr=0.05. Training failed - constant output.,outputs/inference/tab_m_20260402_101459
+260401_200_base,2026-04-02,cs_mlp,L+S,584,750,57.5,1985,keep,Phase1 ablation: CS-MLP base(100feat) - better than all(155). IC=0.066 ICIR=0.562. Backtest best z2.3=-4.0M.,outputs/inference/cs_mlp_20260402_102539

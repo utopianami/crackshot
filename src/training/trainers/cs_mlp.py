@@ -135,10 +135,10 @@ class CSMLPTrainer(BaseTrainer):
             for t in range(stock_len):
                 rel_t = offset + t
                 abs_row = start + t
-                # Filter: vol > 0 and target != 0
+                # Filter: vol > 0 and target != 0 and no NaN
                 vol_val = float(y[abs_row, self._vol_idx])
                 target_val = float(y[abs_row, self._h1])
-                if vol_val == 0 or target_val == 0:
+                if vol_val == 0 or target_val == 0 or vol_val != vol_val or target_val != target_val:
                     continue
                 if rel_t not in ts_to_rows:
                     ts_to_rows[rel_t] = []

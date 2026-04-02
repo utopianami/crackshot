@@ -29,10 +29,14 @@ def build_splits(
         val_end = info["val_end"]
 
         for i in range(start, train_end):
-            if y[i, vol_idx] != 0 and y[i, target_idx] != 0:
+            vol = y[i, vol_idx]
+            tgt = y[i, target_idx]
+            if vol != 0 and tgt != 0 and not (vol != vol) and not (tgt != tgt):
                 tr_indices.append(i)
         for i in range(train_end, val_end):
-            if y[i, vol_idx] != 0 and y[i, target_idx] != 0:
+            vol = y[i, vol_idx]
+            tgt = y[i, target_idx]
+            if vol != 0 and tgt != 0 and not (vol != vol) and not (tgt != tgt):
                 va_indices.append(i)
 
     return np.array(tr_indices, dtype=np.int64), np.array(va_indices, dtype=np.int64)
