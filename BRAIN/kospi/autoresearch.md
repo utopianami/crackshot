@@ -70,6 +70,17 @@ dataset,date,model,direction,L_CumAlpha,LS_CumAlpha,L_WR,L_Trades,status,descrip
 
 ---
 
+## 인퍼런스 parquet 고정 규칙
+
+인퍼런스 parquet 생성 시 항상 적용:
+
+- **KST 타임존 필수**: `start_timestamp`, `end_timestamp` 모두 `Asia/Seoul` tz-aware
+- **end_timestamp 필수**: `start_timestamp + bar duration` (1분봉: +1분, 1초봉: +1초)
+- **15:20 제외**: 인퍼런스 대상은 15:19까지. 15:20봉 포함하지 않음
+- **저장 경로**: `/shared/inference_kospi/<모델명>/`
+
+---
+
 ## 제약 조건
 
 - **primary target**: c2c_120 고정. 다른 horizon은 auxiliary loss로만
