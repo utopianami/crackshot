@@ -119,7 +119,7 @@ dataset,date,model,direction,L_CumAlpha,LS_CumAlpha,L_WR,L_Trades,status,descrip
 - `src/features/rolling.py` 수정 — 모든 feature 값이 달라짐
 - `reference/` 직접 수정 — `src/features/`가 canonical, reference에 배포 시 복사
 - `class_bins` 원본 수정 — 다른 bins 시도 시 별도 config로
-- **백테스트 전략 파라미터 변경** — `reference/vendor_ultimate_v3/config.py`의 `STRATEGY_PARAMS` 고정. 지시가 있을 때만 변경. 그 외 절대 건드리지 말 것.
+- **백테스트 전략 파라미터 변경** — `reference/260330_vendor_ultimate_v3/config.py`의 `STRATEGY_PARAMS` 고정. 지시가 있을 때만 변경. 그 외 절대 건드리지 말 것.
 
 ---
 
