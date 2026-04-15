@@ -32,5 +32,6 @@ class CSMLPConfig:
     use_glu: bool = False  # True = Gated Linear Unit layers
     pnl_weight: float = 0.0  # >0 = weight CE by |actual_return|, multiplied by this factor
     dead_zone_threshold: float = 0.0  # >0 = exclude samples where |c2c_120| < threshold from loss (e.g. 0.0015)
+    alpha_label: bool = False  # True = use cross-sectional demeaned c2c_120 as label (market-neutral alpha)
     optimizer: str = "adamw"  # "adamw" or "sgd"
     sgd_momentum: float = 0.9

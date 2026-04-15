@@ -1,4 +1,4 @@
-"""Researcher2 리서치 파이프라인: 3소스 병렬 검색 + Opus 순위 + 논문 요약.
+"""Researcher2 리서치 파이프라인: 2소스 병렬 검색 + Opus 순위 + 논문 요약.
 
 Usage:
     # 리서치 실행
@@ -21,8 +21,6 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from urllib.request import urlopen, Request
-from urllib.error import HTTPError
 
 import numpy as np
 
@@ -134,53 +132,7 @@ def _search_local_embeddings(hyde_abstract: str, top_k: int = 30) -> list[dict]:
     return results
 
 
-# ─── Source 2: Elicit API ───────────────────────────────────────
-
-def _search_elicit(query: str, max_results: int = 30) -> list[dict]:
-    """Elicit Search API."""
-    api_key = os.environ.get("ELICIT_API_KEY")
-    if not api_key:
-        print("  ⚠️ ELICIT_API_KEY 없음.")
-        return []
-
-    try:
-        body = json.dumps({"query": query, "maxResults": max_results}).encode()
-        req = Request(
-            "https://elicit.com/api/v1/search",
-            data=body,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 AlphaSquad/1.0",
-            },
-        )
-        with urlopen(req, timeout=30) as resp:
-            raw = json.loads(resp.read().decode())
-
-        # 응답이 {"papers": [...]} 또는 [...] 형태
-        data = raw.get("papers", raw) if isinstance(raw, dict) else raw
-
-        results = []
-        for p in data:
-            results.append({
-                "paperId": p.get("elicitId", ""),
-                "title": p.get("title", ""),
-                "abstract": p.get("abstract", ""),
-                "venue": p.get("venue", ""),
-                "year": p.get("year"),
-                "citations": p.get("citedByCount", 0),
-                "authors": p.get("authors", []),
-                "doi": p.get("doi", ""),
-                "urls": p.get("urls", []),
-                "source": "elicit",
-            })
-        return results
-    except Exception as e:
-        print(f"  ⚠️ Elicit API 실패: {e}")
-        return []
-
-
-# ─── Source 3: Opus 직접 추천 ───────────────────────────────────
+# ─── Source 2: Opus 직접 추천 ───────────────────────────────────
 
 def _search_opus(query: str, previous_papers: list[str]) -> list[dict]:
     """Opus에게 직접 논문 추천 요청."""
@@ -242,12 +194,12 @@ Recommend 10-15 papers. Return ONLY the JSON array. Do not use tools."""
 
 # ─── Merge + Rank ───────────────────────────────────────────────
 
-def _merge_results(local: list[dict], elicit: list[dict], opus: list[dict]) -> list[dict]:
-    """3소스 결과 합치기 + 중복 제거."""
+def _merge_results(local: list[dict], opus: list[dict]) -> list[dict]:
+    """2소스 결과 합치기 + 중복 제거."""
     seen_titles = {}  # normalized title → paper
     all_papers = []
 
-    for source_name, papers in [("local_emb", local), ("elicit", elicit), ("opus", opus)]:
+    for source_name, papers in [("local_emb", local), ("opus", opus)]:
         for p in papers:
             title_norm = p.get("title", "").lower().strip()
             if not title_norm:
@@ -514,25 +466,22 @@ def run_research(query: str) -> dict:
     hyde_abstract = _generate_hyde(query)
     print(f"  생성 완료 ({len(hyde_abstract)} chars)")
 
-    # 2. 3소스 병렬 검색
-    print("[Step 2/6] 3소스 병렬 검색...")
+    # 2. 2소스 병렬 검색
+    print("[Step 2/6] 2소스 병렬 검색...")
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         f_local = executor.submit(_search_local_embeddings, hyde_abstract, 30)
-        f_elicit = executor.submit(_search_elicit, query, 30)
         f_opus = executor.submit(_search_opus, query, previous_papers)
 
         local_results = f_local.result()
-        elicit_results = f_elicit.result()
         opus_results = f_opus.result()
 
     print(f"  ① 로컬 임베딩: {len(local_results)}편")
-    print(f"  ② Elicit: {len(elicit_results)}편")
-    print(f"  ③ Opus 추천: {len(opus_results)}편")
+    print(f"  ② Opus 추천: {len(opus_results)}편")
 
     # 3. Merge
     print("[Step 3/6] 결과 합치기 + 중복 제거...")
-    merged = _merge_results(local_results, elicit_results, opus_results)
+    merged = _merge_results(local_results, opus_results)
     multi_source = [p for p in merged if len(p.get("sources", [])) > 1]
     print(f"  합계: {len(merged)}편 (다중 소스: {len(multi_source)}편)")
 
@@ -564,7 +513,6 @@ def run_research(query: str) -> dict:
         "hyde_abstract": hyde_abstract,
         "results": {
             "local_emb": [p.get("title", "") for p in local_results[:10]],
-            "elicit": [p.get("title", "") for p in elicit_results[:10]],
             "opus": [p.get("title", "") for p in opus_results[:10]],
         },
         "ranked": [p.get("paperId", "") for p in ranked],

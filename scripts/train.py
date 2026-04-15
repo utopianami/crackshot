@@ -6,7 +6,23 @@ Usage:
 
     # Overrides only (uses dataclass defaults)
     PYTHONPATH="." uv run python scripts/train.py model.name=tab_m tab_m.npy_dir=/path tab_m.d_block=256
+
+Determinism:
+    GPU parallel reduction is non-deterministic by default in XLA/JAX, which
+    makes same-seed retrains diverge (observed: ~3M alpha PnL spread across 3
+    runs with identical command, 2026-04-08). To make training bit-exact
+    reproducible, we append `--xla_gpu_deterministic_ops=true` to XLA_FLAGS
+    before importing JAX. Set env var `DISABLE_DETERMINISM=1` to override
+    (e.g. for speed benchmarking where reproducibility isn't needed).
 """
+
+import os
+
+if os.environ.get("DISABLE_DETERMINISM") != "1":
+    _existing = os.environ.get("XLA_FLAGS", "")
+    _det_flag = "--xla_gpu_deterministic_ops=true"
+    if _det_flag not in _existing:
+        os.environ["XLA_FLAGS"] = f"{_existing} {_det_flag}".strip()
 
 import argparse
 import logging

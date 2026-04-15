@@ -7,7 +7,7 @@ AutoGen GroupChat + Claude CLI 기반으로, 5명의 전문 에이전트가 체�
 
 | 에이전트 | 역할 | 모델 |
 |---------|------|------|
-| **Researcher2** (AI아키텍처 전문가) | 아이디어 제안 + 반박/보강. 3소스 리서치 파이프라인 보유. **연구의 정점** | Opus |
+| **Researcher2** (AI아키텍처 전문가) | 아이디어 제안 + 반박/보강. 2소스 리서치 파이프라인 보유. **연구의 정점** | Opus |
 | **Expert1** (금융 데이터 피처 전문가) | 피처 관점 비판 (leakage, redundancy, normalization) | Sonnet |
 | **Expert2** (금융 ML 전략 PM) | 문제 정의·loss·평가 관점 비판 | Sonnet |
 | **Researcher1** (금융 데이터 ML 엔지니어) | 실전 경험 기반 실현 가능성 검토 | Sonnet |
@@ -16,7 +16,7 @@ AutoGen GroupChat + Claude CLI 기반으로, 5명의 전문 에이전트가 체�
 ## 핵심: Researcher2 리서치 파이프라인
 
 Researcher2는 "이 문제에 어떤 아키텍처를 써야 하는가?"에 대해 **논문 기반으로 근거 있는 제안**을 한다.
-3소스 병렬 검색 + Opus 순위 매기기 + 논문 요약으로 구성된 리서치 파이프라인을 사용.
+2소스 병렬 검색 + Opus 순위 매기기 + 논문 요약으로 구성된 리서치 파이프라인을 사용.
 
 ```
 문제 정의 (쿼리)
@@ -26,15 +26,12 @@ Researcher2는 "이 문제에 어떤 아키텍처를 써야 하는가?"에 대�
     ├─── ① HyDE + 로컬 임베딩 검색 (42K+ 학회 논문)
     │    가상 abstract 생성 → 임베딩 유사도로 관련 논문 탐색
     │
-    ├─── ② Elicit Search API (학술 논문 전문 검색)
-    │    Semantic Scholar 넘어서는 학술 검색
-    │
-    ├─── ③ Opus 직접 추천 (LLM 지식 기반)
+    ├─── ② Opus 직접 추천 (LLM 지식 기반)
     │    검색 API가 못 찾는 논문을 Opus가 추천
     │
     │    ※ 이전에 찾은 논문은 제외하고 새 논문만 검색
     │
-    └─── 3소스 병렬 실행 → 결과 합치기 + 중복 제거
+    └─── 2소스 병렬 실행 → 결과 합치기 + 중복 제거
                     │
                     ▼
          Opus가 문제 적합도 순위 매기기
@@ -56,7 +53,7 @@ research_store/
 │   └── {paperId}.json  (title, abstract, summary, sources, topics)
 │
 ├── queries/         ← 쿼리별 검색 결과
-│   └── {id}.json       (query, hyde_abstract, 3소스 결과, ranked)
+│   └── {id}.json       (query, hyde_abstract, 2소스 결과, ranked)
 │
 ├── contexts/        ← 회의용 컨텍스트 캐시
 │   ├── index.json      (주제별 인덱스 — topic, keywords, date)
@@ -68,7 +65,7 @@ research_store/
 ```
 
 - **논문 요약은 한 번만**: 같은 논문이 여러 회의에서 나와도 기존 요약 재사용
-- **이전 결과 제외 검색**: 3소스에 "이전에 찾은 논문 외에 추천해줘"로 요청 → 매번 새 논문 발견
+- **이전 결과 제외 검색**: 2소스에 "이전에 찾은 논문 외에 추천해줘"로 요청 → 매번 새 논문 발견
 - **컨텍스트 캐시**: 유사 주제로 회의하면 이전 리서치 재활용
 
 ### 학회 논문 인덱스
@@ -95,7 +92,7 @@ alpha_squad/
 │   └── researcher3.py            ← Researcher3: 실험 PM [Opus]
 │
 ├── knowledge/                    ← 지식 시스템
-│   ├── researcher2_pipeline.py   ← ★ 3소스 리서치 파이프라인 (핵심)
+│   ├── researcher2_pipeline.py   ← ★ 2소스 리서치 파이프라인 (핵심)
 │   ├── lightrag_backend.py       ← LightRAG + Claude CLI + sentence-transformers
 │   ├── study_agent.py            ← snowball 웹 검색 지식 수집
 │   ├── collect_papers.py         ← 학회 논문 수집 + 임베딩
@@ -147,7 +144,7 @@ alpha_squad/
 │     LightRAG: 에이전트별 지식 그래프 검색                          │
 │                                                                 │
 │  3. ★ Researcher2 리서치 파이프라인                               │
-│     HyDE + 로컬 임베딩 / Elicit / Opus 추천 → 3소스 병렬          │
+│     HyDE + 로컬 임베딩 / Opus 추천 → 2소스 병렬                   │
 │     Opus 순위 → 논문 요약 → 컨텍스트 생성 (10,000+ chars)         │
 │                                                                 │
 └────────────────────────┬────────────────────────────────────────┘
@@ -168,7 +165,7 @@ alpha_squad/
 │  ⑥ Researcher3 (실험 PM)         ──→  수용/기각 + 실험 스펙 작성  │
 │                                                                 │
 │  ※ --rounds N 으로 이 사이클을 N번 반복                            │
-│  ※ Researcher2는 토론 중 추가 리서치 가능 (3소스 재실행)            │
+│  ※ Researcher2는 토론 중 추가 리서치 가능 (2소스 재실행)            │
 └────────────────────────┬────────────────────────────────────────┘
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -185,11 +182,11 @@ alpha_squad/
 
 | 항목 | 설계 |
 |------|------|
-| **Researcher2** | Opus + 3소스 리서치 + 2회 발언/라운드 + 10,000+ chars 컨텍스트 |
+| **Researcher2** | Opus + 2소스 리서치 + 2회 발언/라운드 + 10,000+ chars 컨텍스트 |
 | **Researcher3** | Opus — 최종 결정권자, 구체적 실험 스펙 작성 |
 | **Expert1, Expert2, Researcher1** | Sonnet — LightRAG 지식 그래프 기반 |
 | **LLM 호출** | `claude` CLI subprocess → Max 구독 그대로 사용 |
-| **Researcher2 지식** | 3소스 파이프라인 (HyDE+임베딩 / Elicit / Opus 추천) |
+| **Researcher2 지식** | 2소스 파이프라인 (HyDE+임베딩 / Opus 추천) |
 | **나머지 에이전트 지식** | LightRAG 지식 그래프 (hybrid: 벡터+그래프 탐색) |
 | **회의 메모리** | ChromaDB — 회의간 맥락 유지 |
 | **리서치 누적** | research_store/ — 논문 요약/컨텍스트 재활용 |
@@ -199,7 +196,7 @@ alpha_squad/
 ### Researcher2 리서치 (핵심)
 
 ```bash
-# 주제에 대해 3소스 리서치 실행
+# 주제에 대해 2소스 리서치 실행
 PYTHONPATH="." uv run python alpha_squad/knowledge/researcher2_pipeline.py research "non-stationary tabular deep learning"
 
 # 이전 리서치 목록

@@ -30,6 +30,18 @@ def compute_labels(c: np.ndarray) -> np.ndarray:
     return labels
 
 
+def cross_sectional_demean(values: np.ndarray) -> np.ndarray:
+    """Subtract the NaN-aware mean from a 1D array of per-stock values at one timestamp.
+
+    Used by cs_mlp alpha_label mode: the alpha at each stock is its raw return
+    minus the cross-sectional mean (which is market beta proxy) at that same
+    timestamp. NaNs are preserved in the output.
+    """
+    arr = np.asarray(values)
+    mean = np.nanmean(arr) if arr.size > 0 else 0.0
+    return (arr - mean).astype(arr.dtype, copy=False)
+
+
 def compute_alpha_label(c2c_120: np.ndarray, stock_indices: np.ndarray) -> np.ndarray:
     """Compute alpha label: c2c_120 - market_mean(c2c_120) per timestamp.
 

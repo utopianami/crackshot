@@ -19,6 +19,7 @@ import optax
 
 from src.config.models.cs_mlp import CSMLPConfig
 from src.data.labels import to_classes
+from src.features.labels import cross_sectional_demean
 from src.models.architectures.cs_mlp import CrossSectionalMLP
 from src.training.losses import label_smoothing_ce, listnet_loss
 from src.training.registry import BaseTrainer, register_trainer
@@ -65,6 +66,9 @@ class CSMLPTrainer(BaseTrainer):
 
         feature_mode = getattr(cs_cfg, 'feature_mode', 'raw_mean_zscore')
         self._feature_mode = feature_mode
+        self._alpha_label = bool(getattr(cs_cfg, 'alpha_label', False))
+        if self._alpha_label:
+            log.info("alpha_label=True → cross-sectional demean applied to c2c_120 targets")
         self._use_layernorm = getattr(cs_cfg, 'use_layernorm', False)
         self._activation = getattr(cs_cfg, 'activation', 'gelu')
         feat_idx = getattr(cs_cfg, 'feature_indices', [])
@@ -108,10 +112,18 @@ class CSMLPTrainer(BaseTrainer):
 
     def _build_timestamp_groups(
         self, offsets: dict, y: np.ndarray, split: str, max_stocks: int,
+        for_inference: bool = False,
     ):
         """Build timestamp → row_indices mapping for cross-sectional training.
 
         Same logic as TabM trainer: relative_pos aligns timestamps across stocks.
+
+        for_inference=True: skip the training filter on target_val==0 / vol_val==0.
+            Required for inference (reference backtest) — dont_repeat.md 2026-04-06:
+            at inference time every row must be predicted. The training filter
+            (which excludes rows where c2c_120==0 or vol==0) must NOT be applied
+            during inference, otherwise those rows get uniform [0.2,...] fallback
+            predictions that diverge from reference inference path outputs.
         """
         if split == "train":
             lengths = {k: v["train_end"] - v["start"] for k, v in offsets.items()}
@@ -135,10 +147,14 @@ class CSMLPTrainer(BaseTrainer):
             for t in range(stock_len):
                 rel_t = offset + t
                 abs_row = start + t
-                # Filter: vol > 0 and target != 0 and no NaN
                 vol_val = float(y[abs_row, self._vol_idx])
                 target_val = float(y[abs_row, self._h1])
-                if vol_val == 0 or target_val == 0 or vol_val != vol_val or target_val != target_val:
+                # Always drop NaN rows (would break model forward pass)
+                if vol_val != vol_val or target_val != target_val:
+                    continue
+                # Training only: drop vol==0 and target==0 rows to focus gradient
+                # on tradeable, informative samples. At inference we keep everything.
+                if not for_inference and (vol_val == 0 or target_val == 0):
                     continue
                 if rel_t not in ts_to_rows:
                     ts_to_rows[rel_t] = []
@@ -239,8 +255,14 @@ class CSMLPTrainer(BaseTrainer):
             if self._feature_indices is not None:
                 X_raw = X_raw[:, self._feature_indices]
             y_batch = np.array(y[rows])
-            y120 = to_classes(y_batch[:, self._h1], bins)
-            ret120 = y_batch[:, self._h1].astype(np.float32)
+            target_raw = y_batch[:, self._h1]
+            if getattr(self, '_alpha_label', False):
+                # Cross-sectional alpha: subtract market mean at this timestamp
+                target_used = cross_sectional_demean(target_raw.astype(np.float32))
+            else:
+                target_used = target_raw.astype(np.float32)
+            y120 = to_classes(target_used, bins)
+            ret120 = target_used.astype(np.float32)
 
             # Cross-sectional augmentation
             X_aug = self._augment_features(X_raw, feature_mode)
@@ -559,9 +581,9 @@ class CSMLPTrainer(BaseTrainer):
         all_indices = sorted(all_indices)
         total_rows = len(all_indices)
 
-        # Predict valid rows via timestamp groups
+        # Predict valid rows via timestamp groups (inference: no target/vol filter)
         ts_rows, ts_counts, n_ts = self._build_timestamp_groups(
-            offsets_dict, y, split, cs_cfg.max_stocks
+            offsets_dict, y, split, cs_cfg.max_stocks, for_inference=True,
         )
         valid_probs, valid_actuals = self._predict_timestamps(
             X, y, ts_rows, ts_counts, n_ts
