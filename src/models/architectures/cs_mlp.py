@@ -1,6 +1,6 @@
-"""Cross-sectional MLP — per-stock MLP with market context features.
+"""Cross-sectional MLP — per-entity MLP with group context features.
 
-Input: [stock_features, market_mean, market_std, z_score] per stock.
+Input: [entity_features, market_mean, market_std, z_score] per entity.
 Output: classification logits for each horizon.
 """
 

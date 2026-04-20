@@ -6,7 +6,7 @@ from typing import Any
 
 @dataclass
 class DatasetConfig:
-    """KOSPI NPY 공통 dataset 설정 (30-label 기준 기본값)."""
+    """NPY dataset 공통 기본값 설정 (30-label 기준)."""
     horizon_indices: list = field(default_factory=lambda: [17, 21, 25])
     primary_horizon: int = 1
     vol_idx: int = -1

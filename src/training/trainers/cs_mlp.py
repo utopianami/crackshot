@@ -1,8 +1,8 @@
 """Cross-sectional MLP trainer.
 
-Trains per-timestamp: loads all stocks for each timestamp,
-computes market-level statistics, augments features with
-[raw, market_mean, z_score], then classifies each stock.
+Trains per-timestamp: loads all entities for each timestamp,
+computes group-level statistics, augments features with
+[raw, market_mean, z_score], then classifies each entity.
 """
 
 import json
@@ -116,7 +116,7 @@ class CSMLPTrainer(BaseTrainer):
     ):
         """Build timestamp → row_indices mapping for cross-sectional training.
 
-        Same logic as TabM trainer: relative_pos aligns timestamps across stocks.
+        Same logic as TabM trainer: relative_pos aligns timestamps across entities.
 
         for_inference=True: skip the training filter on target_val==0 / vol_val==0.
             Required for inference (reference backtest) — dont_repeat.md 2026-04-06:
@@ -498,7 +498,7 @@ class CSMLPTrainer(BaseTrainer):
     def _predict_timestamps(
         self, X, y, ts_rows, ts_counts, n_ts,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Predict all stocks across all timestamps with cross-sectional augmentation.
+        """Predict all entities across all timestamps with cross-sectional augmentation.
 
         Returns predictions ordered by original row indices for consistency.
         """
