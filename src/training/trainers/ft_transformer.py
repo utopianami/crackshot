@@ -92,8 +92,14 @@ class FTTransformerTrainer(BaseTrainer):
             key=model_key,
         )
 
+        import tempfile, time
+        checkpoint_dir = Path(tempfile.gettempdir()) / f"ft_transformer_ckpt_{int(time.time())}"
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        log.info(f"Best-model checkpoint dir: {checkpoint_dir}")
+
         self.model = self._train(
-            self.model, X_train, y_train, tr_indices, X_val, y_val, va_indices, ft_cfg, key
+            self.model, X_train, y_train, tr_indices, X_val, y_val, va_indices, ft_cfg, key,
+            checkpoint_dir=checkpoint_dir,
         )
 
         log.info("Computing val predictions...")
@@ -154,7 +160,7 @@ class FTTransformerTrainer(BaseTrainer):
             to_classes(y_b[:, self._h2], bins),
         )
 
-    def _train(self, model, X_tr, y_tr, tr_idx, X_va, y_va, va_idx, ft_cfg, key):
+    def _train(self, model, X_tr, y_tr, tr_idx, X_va, y_va, va_idx, ft_cfg, key, checkpoint_dir: Path | None = None):
         steps_per_epoch = len(tr_idx) // ft_cfg.batch_size + 1
         total_steps = steps_per_epoch * ft_cfg.epochs
 
@@ -271,6 +277,10 @@ class FTTransformerTrainer(BaseTrainer):
                 best_val_loss = val_loss
                 best_model = model
                 patience_counter = 0
+                if checkpoint_dir is not None:
+                    ckpt_path = checkpoint_dir / "best_model.eqx"
+                    eqx.tree_serialise_leaves(str(ckpt_path), best_model)
+                    log.info(f"[FTTransformer] Checkpoint saved (epoch={epoch}, val_loss={best_val_loss:.6f}) → {ckpt_path}")
             else:
                 patience_counter += 1
                 if patience_counter >= ft_cfg.patience:
