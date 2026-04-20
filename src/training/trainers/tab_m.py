@@ -23,6 +23,7 @@ from dataclasses import asdict
 
 from src.config.models.tab_m import TabMConfig
 from src.models.architectures.tab_m import TabM, TabMmini
+from src.training.checkpoint import save_best_checkpoint
 from src.training.registry import BaseTrainer, register_trainer
 from src.data.labels import to_classes
 from src.training.losses import (
@@ -531,6 +532,15 @@ class TabMTrainer(BaseTrainer):
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_model = model
+                save_best_checkpoint(
+                    trainer=self,
+                    save_path=self._checkpoint_save_path,
+                    best_model=best_model,
+                    epoch=epoch,
+                    val_loss=float(best_val_loss),
+                    extra_meta={"val_acc": float(val_acc)},
+                    logger=log,
+                )
                 patience_counter = 0
             else:
                 patience_counter += 1

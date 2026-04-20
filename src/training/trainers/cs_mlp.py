@@ -21,6 +21,7 @@ from src.config.models.cs_mlp import CSMLPConfig
 from src.data.labels import to_classes
 from src.features.labels import cross_sectional_demean
 from src.models.architectures.cs_mlp import CrossSectionalMLP
+from src.training.checkpoint import save_best_checkpoint
 from src.training.losses import label_smoothing_ce, listnet_loss
 from src.training.registry import BaseTrainer, register_trainer
 
@@ -482,6 +483,15 @@ class CSMLPTrainer(BaseTrainer):
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_model = model
+                save_best_checkpoint(
+                    trainer=self,
+                    save_path=self._checkpoint_save_path,
+                    best_model=best_model,
+                    epoch=epoch,
+                    val_loss=float(best_val_loss),
+                    extra_meta={"val_acc": float(val_acc)},
+                    logger=log,
+                )
                 patience_counter = 0
             else:
                 patience_counter += 1

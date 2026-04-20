@@ -22,6 +22,7 @@ import optax
 from src.config.models.ft_transformer import FTTransformerConfig
 from src.models.architectures.ft_transformer import FTTransformer
 from src.training.registry import BaseTrainer, register_trainer
+from src.training.checkpoint import save_best_checkpoint
 from src.data.labels import to_classes
 from src.training.losses import label_smoothing_ce
 
@@ -92,14 +93,8 @@ class FTTransformerTrainer(BaseTrainer):
             key=model_key,
         )
 
-        import tempfile, time
-        checkpoint_dir = Path(tempfile.gettempdir()) / f"ft_transformer_ckpt_{int(time.time())}"
-        checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        log.info(f"Best-model checkpoint dir: {checkpoint_dir}")
-
         self.model = self._train(
             self.model, X_train, y_train, tr_indices, X_val, y_val, va_indices, ft_cfg, key,
-            checkpoint_dir=checkpoint_dir,
         )
 
         log.info("Computing val predictions...")
@@ -160,7 +155,7 @@ class FTTransformerTrainer(BaseTrainer):
             to_classes(y_b[:, self._h2], bins),
         )
 
-    def _train(self, model, X_tr, y_tr, tr_idx, X_va, y_va, va_idx, ft_cfg, key, checkpoint_dir: Path | None = None):
+    def _train(self, model, X_tr, y_tr, tr_idx, X_va, y_va, va_idx, ft_cfg, key):
         steps_per_epoch = len(tr_idx) // ft_cfg.batch_size + 1
         total_steps = steps_per_epoch * ft_cfg.epochs
 
@@ -277,10 +272,15 @@ class FTTransformerTrainer(BaseTrainer):
                 best_val_loss = val_loss
                 best_model = model
                 patience_counter = 0
-                if checkpoint_dir is not None:
-                    ckpt_path = checkpoint_dir / "best_model.eqx"
-                    eqx.tree_serialise_leaves(str(ckpt_path), best_model)
-                    log.info(f"[FTTransformer] Checkpoint saved (epoch={epoch}, val_loss={best_val_loss:.6f}) → {ckpt_path}")
+                save_best_checkpoint(
+                    trainer=self,
+                    save_path=self._checkpoint_save_path,
+                    best_model=best_model,
+                    epoch=epoch,
+                    val_loss=best_val_loss,
+                    extra_meta={"val_acc_120": float(val_acc)},
+                    logger=log,
+                )
             else:
                 patience_counter += 1
                 if patience_counter >= ft_cfg.patience:

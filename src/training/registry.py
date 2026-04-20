@@ -16,6 +16,11 @@ log = logging.getLogger(__name__)
 class BaseTrainer(ABC):
     """모든 Trainer의 추상 기반 클래스 (npy 기반)."""
 
+    # Set by scripts/train.py before fit_from_npy(). When non-None, trainers
+    # should overwrite this directory with the best model each time val
+    # improves (crash-safe checkpointing via src.training.checkpoint).
+    _checkpoint_save_path: "Path | None" = None
+
     @abstractmethod
     def fit_from_npy(self, npy_dir: str | Path) -> None:
         ...

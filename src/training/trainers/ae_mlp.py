@@ -23,6 +23,7 @@ from src.data.labels import to_classes
 from src.data.quantile_normalization import fit_quantile_params, transform_np
 from src.data.scaler_io import save_scaler_params, load_scaler_params
 from src.models.architectures.ae_mlp import FrozenEncoderMLP, SupervisedAutoencoder
+from src.training.checkpoint import save_best_checkpoint
 from src.training.losses import label_smoothing_ce
 from src.training.registry import BaseTrainer, register_trainer
 
@@ -411,6 +412,16 @@ class AEMLPTrainer(BaseTrainer):
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_model = model
+                self.mlp_model = best_model
+                save_best_checkpoint(
+                    trainer=self,
+                    save_path=self._checkpoint_save_path,
+                    best_model=best_model,
+                    epoch=epoch,
+                    val_loss=float(best_val_loss),
+                    extra_meta={"val_acc": float(val_acc)},
+                    logger=log,
+                )
                 patience_counter = 0
             else:
                 patience_counter += 1

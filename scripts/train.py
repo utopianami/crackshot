@@ -115,8 +115,21 @@ def main():
     if not npy_dir:
         raise ValueError("data.data_path must be set. Run convert_kospi_npy.py first.")
 
+    # Timestamp suffix for unique output paths (used for both model save and predictions)
+    from datetime import datetime
+    ts_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     # 1. Train
     trainer = create_trainer(model_name, cfg=cfg)
+
+    # Inject save path so the trainer can overwrite-save "best" on every val
+    # improvement (crash-safe). If training finishes cleanly, trainer.save()
+    # is called again at the end below, which is a no-op rewrite of the same
+    # best weights.
+    save_path = Path(cfg.paths.saved_model_path) / f"{model_name}_{ts_suffix}"
+    save_path.mkdir(parents=True, exist_ok=True)
+    trainer._checkpoint_save_path = save_path
+    log.info(f"Best-model checkpoint path: {save_path}")
 
     t_start = time.time()
     trainer.fit_from_npy(npy_dir)
@@ -130,10 +143,6 @@ def main():
         _log_eval_cls(predictions, actual, prefix="VAL ")
     else:
         _log_eval(predictions, actual, prefix="VAL ")
-
-    # Timestamp suffix for unique output paths
-    from datetime import datetime
-    ts_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # 3. Evaluate (test)
     npy_path = Path(npy_dir)
@@ -151,11 +160,11 @@ def main():
         else:
             _log_eval(test_predictions, test_actual, prefix="TEST ")
 
-    # 4. Save
-    save_path = Path(cfg.paths.saved_model_path) / f"{model_name}_{ts_suffix}"
-    save_path.mkdir(parents=True, exist_ok=True)
+    # 4. Save final model to the same path used for best-model checkpointing.
+    # The trainer's internal best_model has already been written to save_path
+    # each time val improved, so this final save is an overwrite with the
+    # best weights (trainer.model == best_model at end of training).
     trainer.save(save_path)
-    # Save full training config for reproducibility
     with open(save_path / "train_config.yaml", "w") as f:
         f.write(OmegaConf.to_yaml(cfg))
     log.info(f"Model saved to {save_path}")
