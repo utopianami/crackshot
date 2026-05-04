@@ -1,0 +1,48 @@
+model:
+  name: cs_mlp_portfolio
+
+data:
+  data_path: "BRAIN/binance/data/npy_phase2/"
+  sample_ratio: 1.0
+
+dataset:
+  horizon_indices: [0, 1, 2]   # fwd_res_1h, fwd_res_4h, fwd_res_24h
+  primary_horizon: 1           # 4h
+  vol_idx: 4                   # vol_dummy
+  class_bins: [-0.01, -0.003, 0.003, 0.01]   # unused (regression head)
+
+cs_mlp_portfolio:
+  hidden_units: [256, 128]
+  dropout: 0.3
+  use_layernorm: false
+  activation: gelu
+  feature_mode: raw_mean_zscore
+
+  # Portfolio head
+  k_long: 10
+  k_short: 10
+  eps_start: 1.0
+  eps_end: 0.1
+  eps_warmup_epochs: 20
+  sinkhorn_iter: 100
+
+  # Loss
+  lambda_beta: 1.0
+  lambda_turn: 1.0
+  lambda_vol: 0.0
+  turnover_threshold: 0.0
+  fee_per_side: 0.0005
+
+  # Training
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 50
+  patience: 10
+  max_stocks: 320
+  n_timestamps_per_batch: 8
+  warmup_epochs: 5
+
+  # Label indices (meta.json.label_columns = [fwd_res_1h, fwd_res_4h, fwd_res_24h, beta, vol_dummy])
+  target_idx: 1
+  beta_idx: 3
+  vol_idx: 4

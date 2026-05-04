@@ -61,6 +61,17 @@ class TabMTrainer(BaseTrainer):
         in_features, X_train, y_train, X_val, y_val, tr_indices, va_indices = \
             self._load_data(npy_dir, tab_cfg)
 
+        # silent-NaN guard
+        if np.isnan(X_train).any() or np.isnan(X_val).any():
+            n = int(np.isnan(X_train).sum() + np.isnan(X_val).sum())
+            raise ValueError(
+                f"[silent-NaN guard] X has {n} NaN values. "
+                "Rebuild NPY before training. (feedback_no_silent_nan_imputation.md)"
+            )
+        if np.isnan(y_train).any() or np.isnan(y_val).any():
+            n = int(np.isnan(y_train).sum() + np.isnan(y_val).sum())
+            raise ValueError(f"[silent-NaN guard] y has {n} NaN values.")
+
         key = jax.random.PRNGKey(self.cfg.seed)
         key, model_key = jax.random.split(key)
 
@@ -102,8 +113,10 @@ class TabMTrainer(BaseTrainer):
         if listnet_weight > 0:
             use_offsets = (Path(npy_dir) / "X.npy").exists() and (Path(npy_dir) / "offsets.json").exists()
             if use_offsets:
+                from src.data.offsets_override import maybe_patch_offsets_from_cfg
                 with open(Path(npy_dir) / "offsets.json") as f:
                     offsets_dict = json.load(f)
+                offsets_dict = maybe_patch_offsets_from_cfg(offsets_dict, Path(npy_dir), self.cfg.data)
                 y_full = np.load(Path(npy_dir) / "y.npy", mmap_mode="r")
                 ts_rows_tr, ts_counts_tr, n_ts_tr = self._build_timestamp_groups(offsets_dict, y_full, "train")
                 ts_rows_va, ts_counts_va, n_ts_va = self._build_timestamp_groups(offsets_dict, y_full, "val")
@@ -598,10 +611,12 @@ class TabMTrainer(BaseTrainer):
 
         use_offsets = (npy_dir / "X.npy").exists() and (npy_dir / "offsets.json").exists()
         if use_offsets:
+            from src.data.offsets_override import maybe_patch_offsets_from_cfg
             X = np.load(npy_dir / "X.npy", mmap_mode="r")
             y = np.load(npy_dir / "y.npy", mmap_mode="r")
             with open(npy_dir / "offsets.json") as f:
                 offsets = json.load(f)
+            offsets = maybe_patch_offsets_from_cfg(offsets, npy_dir, self.cfg.data)
             idx_list = []
             for stock_info in offsets.values():
                 if split == "train":

@@ -1,0 +1,24 @@
+model:
+  name: tab_m
+
+data:
+  data_path: "BRAIN/binance/data/npy_phase1/"
+  sample_ratio: 1.0
+
+dataset:
+  horizon_indices: [0, 1, 2]
+  primary_horizon: 1
+  vol_idx: 3
+  class_bins: [-0.02, -0.005, 0.005, 0.02]
+
+tab_m:
+  d_block: 192
+  n_blocks: 3
+  block_dropout: 0.3
+  num_members: 16
+  n_bins: 48
+  label_smoothing: 0.05
+  weight_decay: 0.02
+  lr: 0.002
+  patience: 10
+  pnl_weight: 2.0

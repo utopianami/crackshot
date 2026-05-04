@@ -25,6 +25,7 @@ if os.environ.get("DISABLE_DETERMINISM") != "1":
         os.environ["XLA_FLAGS"] = f"{_existing} {_det_flag}".strip()
 
 import argparse
+import json
 import logging
 import time
 
@@ -116,8 +117,9 @@ def main():
         raise ValueError("data.data_path must be set. Run convert_kospi_npy.py first.")
 
     # Timestamp suffix for unique output paths (used for both model save and predictions)
+    # Include microseconds + PID so parallel launches within the same second don't collide.
     from datetime import datetime
-    ts_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts_suffix = datetime.now().strftime("%Y%m%d_%H%M%S_%f") + f"_p{os.getpid()}"
 
     # 1. Train
     trainer = create_trainer(model_name, cfg=cfg)
@@ -147,6 +149,15 @@ def main():
     # 3. Evaluate (test)
     npy_path = Path(npy_dir)
     has_test = (npy_path / "X_test.npy").exists() or (npy_path / "X.npy").exists()
+    # offsets에 test rows 없으면 (val_end == end 모두) test eval 스킵 — --no-test 빌드.
+    if has_test and (npy_path / "offsets.json").exists():
+        try:
+            _o = json.loads((npy_path / "offsets.json").read_text())
+            if not any(int(v.get("end", 0)) > int(v.get("val_end", 0)) for v in _o.values()):
+                has_test = False
+                log.info("No test rows in offsets — skipping test eval.")
+        except Exception:
+            pass
     if has_test:
         test_predictions, test_actual = trainer.predict_npy(npy_dir, split="test")
         if is_classification(model_name):

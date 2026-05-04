@@ -54,9 +54,22 @@ class CSMLPTrainer(BaseTrainer):
         in_features, X_train, y_train, X_val, y_val, tr_indices, va_indices = \
             self._load_npy_data(npy_dir)
 
+        # silent-NaN guard: abort before training masks via nan_to_num
+        if np.isnan(X_train).any() or np.isnan(X_val).any():
+            n = int(np.isnan(X_train).sum() + np.isnan(X_val).sum())
+            raise ValueError(
+                f"[silent-NaN guard] X has {n} NaN values. "
+                "Rebuild NPY before training. (feedback_no_silent_nan_imputation.md)"
+            )
+        if np.isnan(y_train).any() or np.isnan(y_val).any():
+            n = int(np.isnan(y_train).sum() + np.isnan(y_val).sum())
+            raise ValueError(f"[silent-NaN guard] y has {n} NaN values.")
+
         # Build timestamp groups
+        from src.data.offsets_override import maybe_patch_offsets_from_cfg
         with open(npy_dir / "offsets.json") as f:
             offsets_dict = json.load(f)
+        offsets_dict = maybe_patch_offsets_from_cfg(offsets_dict, npy_dir, self.cfg.data)
 
         ts_rows_tr, ts_counts_tr, n_ts_tr = self._build_timestamp_groups(
             offsets_dict, y_train, "train", cs_cfg.max_stocks
@@ -573,10 +586,18 @@ class CSMLPTrainer(BaseTrainer):
         npy_dir = Path(npy_dir)
         cs_cfg = self.cfg.cs_mlp
 
+        from src.data.offsets_override import maybe_patch_offsets_from_cfg
+        from src.training.ts_group_guard import (
+            build_abs_to_ts,
+            assert_single_ts_per_rel_t,
+            build_ts_groups_wallclock,
+        )
         X = np.load(npy_dir / "X.npy", mmap_mode="r")
         y = np.load(npy_dir / "y.npy", mmap_mode="r")
         with open(npy_dir / "offsets.json") as f:
-            offsets_dict = json.load(f)
+            offsets_raw = json.load(f)
+        orig_offsets = {s: dict(v) for s, v in offsets_raw.items()}
+        offsets_dict = maybe_patch_offsets_from_cfg(offsets_raw, npy_dir, self.cfg.data)
 
         # Get all row indices for this split
         all_indices = []
@@ -591,10 +612,29 @@ class CSMLPTrainer(BaseTrainer):
         all_indices = sorted(all_indices)
         total_rows = len(all_indices)
 
-        # Predict valid rows via timestamp groups (inference: no target/vol filter)
-        ts_rows, ts_counts, n_ts = self._build_timestamp_groups(
-            offsets_dict, y, split, cs_cfg.max_stocks, for_inference=True,
-        )
+        # Test split: wall-clock grouping (row-based rel_t breaks on gap bars).
+        # Train/val: keep row-based right-align (no per-row ts metadata).
+        if split == "test":
+            ts_rows, ts_counts, n_ts, abs_to_ts = build_ts_groups_wallclock(
+                offsets_dict, orig_offsets, y, npy_dir, split,
+                int(cs_cfg.max_stocks), self._h1, self._vol_idx,
+                for_inference=True,
+            )
+            ts_to_rows_check = {
+                t: [int(ts_rows[t, s]) for s in range(int(ts_counts[t]))]
+                for t in range(n_ts)
+            }
+            assert_single_ts_per_rel_t(ts_to_rows_check, abs_to_ts)
+            log.info(
+                f"[CS-MLP] wallclock groups (test): n_ts={n_ts} "
+                f"stocks/ts min={int(ts_counts.min()) if n_ts else 0} "
+                f"max={int(ts_counts.max()) if n_ts else 0} "
+                f"mean={float(ts_counts.mean()) if n_ts else 0:.1f}"
+            )
+        else:
+            ts_rows, ts_counts, n_ts = self._build_timestamp_groups(
+                offsets_dict, y, split, cs_cfg.max_stocks, for_inference=True,
+            )
         valid_probs, valid_actuals = self._predict_timestamps(
             X, y, ts_rows, ts_counts, n_ts
         )

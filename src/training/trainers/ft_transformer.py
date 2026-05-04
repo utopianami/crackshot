@@ -328,10 +328,12 @@ class FTTransformerTrainer(BaseTrainer):
 
         use_offsets = (npy_dir / "X.npy").exists() and (npy_dir / "offsets.json").exists()
         if use_offsets:
+            from src.data.offsets_override import maybe_patch_offsets_from_cfg
             X = np.load(npy_dir / "X.npy", mmap_mode="r")
             y = np.load(npy_dir / "y.npy", mmap_mode="r")
             with open(npy_dir / "offsets.json") as f:
                 offsets = json.load(f)
+            offsets = maybe_patch_offsets_from_cfg(offsets, npy_dir, self.cfg.data)
             idx_list = []
             for stock_info in offsets.values():
                 if split == "train":

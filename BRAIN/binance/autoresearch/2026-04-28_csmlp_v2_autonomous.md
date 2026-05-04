@@ -1,0 +1,599 @@
+# 2026-04-28 — csmlp v2 자율 사이클 연구 로그
+
+밤 16:25 KST부터 시작된 자율 사이클. 사용자: "관찰→가설→실험→피드백 루프 알아서 서칭."
+
+## 입력 컨텍스트
+
+- mc150 universe (137 syms binance USDT-M perpetuals)
+- baseline csmlp: chain +29.56% / MDD -9.90% / Sharpe +2.22 / +59.94%/y (3w × 3seed self-window)
+- 7개 변형 학습 완료 (H10), 4개 단순 평균 콤보 (H11)
+
+## 사이클 1 — 상관 매트릭스 / Pareto front
+
+**관찰**: H10 결과 8 변형. mh_head 1등 (Sh +2.47), sym_emb 2등 (+2.38), cs_attn 3등 (+2.24, MDD 우수 -6.12%).
+
+**실험**: 12개(8 단독 + 4 콤보) 변형 chain bar return 페어와이즈 corr.
+
+**결과**:
+- mh_head ↔ baseline corr = 0.976 (사실상 같은 신호)
+- sym_emb ↔ baseline corr = 0.956
+- **cs_attn ↔ baseline corr = 0.755 (진짜 다른 신호)**
+- ft_t ↔ sym_emb corr = 0.582 (가장 decorrelated, 하지만 둘 다 약알파)
+
+Pareto front (top 6):
+1. mh_head_sym_emb (simple avg): Sh +2.49 / MDD -9.60% / +30.58%
+2. mh_head 단독: Sh +2.47 / MDD -9.69% / +30.35%
+3. sym_emb 단독: Sh +2.38 / MDD -10.02% / +29.18%
+4. mh_head_cs_attn_sym_emb: Sh +2.31 / MDD -10.12% / +28.65%
+5. cs_attn 단독: Sh +2.24 / MDD -6.12% / +26.45%
+6. baseline: Sh +2.22 / MDD -9.90% / +29.56%
+
+**결론**: 단순 raw-score 평균이 mh_head + sym_emb 같은 비슷한 신호를 합치면 미세하게 도움. cs_attn 같은 다른 신호 추가는 알파 손실.
+
+---
+
+## 사이클 2 — 가중 앙상블
+
+**가설**: z-norm 후 가중평균하면 cs_attn/ft_t 같은 약알파-decorrelated의 다양화 이점을 살리면서 알파 다일루션 막을 수 있다.
+
+**실험**: 10가지 가중 ensemble (mh+cs 비율, mh+ft_t, mh+sym, 3-way 등).
+
+**결과**: 모든 가중 ensemble이 simple-avg(H11)보다 MDD 나쁨. 최고 가중도 mh_head 단독 못 이김.
+
+| tag | chain | MDD | Sharpe |
+|---|---|---|---|
+| mh_60_sym_40 | +30.18% | -11.64% | +2.29 |
+| zeq_mh_sym | +29.45% | -11.58% | +2.25 |
+| mh_70_sym_20_cs_10 | +29.39% | -12.72% | +2.20 |
+| mh_80_dcn_20 | +29.06% | -11.43% | +2.20 |
+| mh_70_cs_30 | +25.78% | -12.72% | +1.94 |
+
+**가설 실패**. z-norm이 score 분포를 바꿔서 Sinkhorn → top-K가 다르게 행동. simple raw-score average가 더 안전.
+
+**교훈**: score-level ensemble은 "비슷한 분포의 비슷한 알파" 모델 합칠 때만 도움. 다른 분포/알파 합칠 땐 weighted든 z-norm이든 어떤 형태든 손실.
+
+---
+
+## 사이클 3 — mh_head 5-seed validation + n_heads scaling
+
+**가설**: 
+- H1: 3-seed mh_head의 Sharpe +2.47이 진짜 신호인가? 5-seed에서도 유지되나?
+- H2: n_heads ↑(3→5→7) 하면 internal ensemble 효과로 Sharpe 더 ↑?
+
+**실험**: 36 새 모델 학습 (mh3 seed 45/46 + mh5/mh7 5-seed × 3w). H14 apply at k=10.
+
+**결과 (k=10 default)**:
+
+| tag | chain | MDD | Sharpe |
+|---|---|---|---|
+| mh3_3seed (42-44) | +30.35% | -9.69% | **+2.47** ← 원본 |
+| mh3_5seed (42-46) | +29.41% | -9.79% | +2.26 |
+| mh5_5seed | +29.36% | -8.71% | +2.30 |
+| mh7_5seed | +30.66% | -9.10% | +2.40 |
+
+**핵심 발견**:
+1. **mh3 3-seed Sharpe 2.47 → 5-seed 2.26**: 3-seed가 다소 lucky. 시드 45/46이 평균 끌어내림.
+2. **n_heads 스케일링 효과 미미**: 3 (Sh 2.26) vs 5 (2.30) vs 7 (2.40) — 약간 ↑하지만 차이 작음. 추가 학습 비용 가치 없음.
+3. **honest estimate**: mh_head true Sharpe ≈ 2.30 (5-seed 평균).
+4. 다음 단계: k=8에서도 같은 5-seed 측정 (H14b) → mh_head + k=8 honest Sharpe 확인.
+
+**경고**: H10에서 보고했던 mh_head 우위는 3-seed 노이즈가 부분적으로 기여. baseline csmlp 5-seed로도 재측정 필요.
+
+### H14b: mh 변형 5-seed AT k=8
+
+| tag | chain | MDD | Sharpe | ann/y |
+|---|---|---|---|---|
+| mh3_3seed_k8 (overfit) | +38.99% | -8.83% | +2.76 | +79.07% |
+| **mh3_5seed_k8** | **+38.49%** | **-8.13%** | **+2.54** | **+78.05%** ← honest BEST |
+| mh5_5seed_k8 | +34.33% | -8.88% | +2.33 | +69.62% |
+| mh7_5seed_k8 | +35.21% | -9.91% | +2.42 | +71.40% |
+
+**핵심**:
+- 5-seed mh_head + k=8: **Sharpe 2.54 / chain +38.49% / MDD -8.13% / +78%/y** ← 검증된 최고
+- 3-seed의 Sh 2.76은 lucky지만, k=8 효과는 진짜 (k=10 5-seed Sh 2.26 → k=8 5-seed Sh 2.54, +0.28).
+- n_heads = 3이 optimal (5/7는 ↓). 
+
+---
+
+---
+
+## 사이클 4 — ε / k_long / k_short 스윕
+
+**가설**: 학습 모델 그대로 두고 Sinkhorn 파라미터로 알파/MDD 트레이드 탐색.
+
+**실험**: ε ∈ {0.025, 0.05, 0.10}, k ∈ {5, 10, 15, 20}.
+
+**결과**:
+
+| tag | chain | MDD | Sharpe |
+|---|---|---|---|
+| baseline (ε=0.05, k=10) | +30.35% | -9.69% | +2.47 |
+| ε=0.025, k=10 | +30.35% | -9.69% | +2.47 (no diff) |
+| ε=0.10, k=10 | +20.52% | -10.34% | +2.10 (worse) |
+| **ε=0.05, k=5** | **+43.24%** | **-10.57%** | **+2.35** ← 알파 폭증 |
+| ε=0.05, k=15 | +17.36% | -7.14% | +1.95 |
+
+**대박**: **k=5 (집중 portfolio)이 chain +43.24% — baseline 대비 +12.9pp 알파 부스트**.
+- recent: +33.21% → +50.64% (+17pp)
+- h1: -6.68% → -7.38% (-0.7pp)
+- w1: +3.82% → -0.01% (-3.8pp)
+- 즉 "확신 있을 때 큰 베팅" 효과로 recent에서 폭증, 다른 윈도우에선 살짝 손해.
+
+**해석**: 모델이 top-5에 진짜 알파 신호 집중. top-10까지 가면 6-10번째 종목이 노이즈로 알파 희석.
+**트레이드오프**: Sharpe는 2.47→2.35로 약간 ↓ (variance ↑ 때문). 절대수익 우선이면 k=5, risk-adjusted면 k=10.
+
+**다음**: H15b에서 k=6/7/8/9 탐색 → sharpe-pareto 최적 k 찾기.
+
+### H15b 결과 — **k=8이 BEST** ✨
+
+| k | chain | MDD | Sharpe | ann/y |
+|---|---|---|---|---|
+| 5 | +43.24% | -10.57% | +2.35 | (boom/bust) |
+| 6 | +38.83% | -9.04% | +2.39 | +78.73% |
+| 7 | +36.94% | -9.00% | +2.47 | +74.92% |
+| **8** | **+38.99%** | **-8.83%** | **+2.76** | **+79.07%** ← BEST |
+| 9 | +33.47% | -10.60% | +2.52 | +67.87% |
+| 10 (현재) | +30.35% | -9.69% | +2.47 | +59.94% |
+
+비대칭 k는 모두 패배:
+- k5L_k10S: Sh +2.39
+- k10L_k5S: Sh +2.21, MDD -14.46% (bad)
+- k5L_k15S: Sh +2.00
+- k15L_k5S: Sh +1.75
+
+**대박**: k=8 단일 변경으로 Sharpe +0.29, chain +8.64pp, MDD 개선 (-9.69% → -8.83%), 연환산 +19pp.
+
+k=8이 sweet spot: 알파 집중 + 안정성 둘 다 확보.
+
+⚠️ 3-seed 결과. 5-seed mh_head 학습 끝나고 재검증 필수.
+
+---
+
+## 사이클 5 — 시드별 분산
+
+**가설**: ensemble 결과는 시드 평균인데, 시드 단독 분산이 얼마나 큰가? mh_head의 시드-단독 std가 baseline보다 작으면 "내부 노이즈 감소" 가설 직접 입증.
+
+**실험**: 단일 시드 chain 결과의 mean/std (baseline / mh_head / sym_emb / cs_attn × seed 42/43/44).
+
+**결과**:
+
+| variant | chain_mean | chain_std | mdd_std | sh_mean | sh_std |
+|---|---|---|---|---|---|
+| baseline | 23.65 | 3.36 | 5.37 | 1.959 | 0.254 |
+| **mh_head** | 24.42 | 4.40 | **1.88** | 2.073 | **0.143** ← 가장 안정 |
+| sym_emb | **28.24** | 3.31 | 3.78 | **2.481** | 0.214 |
+| cs_attn | 21.24 | 6.97 | 3.29 | 1.812 | 0.570 |
+
+**핵심 발견**:
+1. **mh_head Sharpe std 0.143** — 단연 안정적 (baseline 0.254 대비 -45%). MDD std도 1.88로 가장 작음. **internal 3-head averaging의 노이즈-감소 효과 정량 입증**.
+2. **sym_emb 단일 시드 평균 Sh 2.48** — 가장 높음. 하지만 ensemble Sharpe는 2.38로 더 낮음. 시드별로 다른 winner 학습 → 평균이 dilute함.
+3. cs_attn Sharpe std 0.570 — 매우 변동성 큼. 단독 사용 위험.
+4. **가설 입증**: ensemble의 mh_head 우위 (2.073 → 2.47)는 internal averaging 효과로 진짜 신호.
+
+**전략적 함의**:
+- **안정성 1순위**: mh_head + k=8 (검증중)
+- **알파 1순위**: sym_emb 단일 시드 (변동성 위험)
+- 프로덕션 권장: mh_head + k=8 (Sharpe 2.76 / +79%/y / MDD -8.83%)
+
+---
+
+## 사이클 6 — k=8 universality (다른 변형도 효과 있나?)
+
+**가설**: k=8이 진짜 sweet spot이라면 mh_head 외 다른 변형들도 k=10보다 k=8에서 좋아야.
+
+**실험**: 동일 score → k=8 vs k=10 비교 (5 변형).
+
+**결과**:
+
+| variant | k=10 chain | k=8 chain | Δ chain | k=10 Sh | k=8 Sh | Δ Sh | k=8 MDD |
+|---|---|---|---|---|---|---|---|
+| baseline | +29.56% | **+36.57%** | +7.0pp | +2.22 | +2.31 | +0.09 | -11.37% (worse) |
+| **mh_head** | +30.35% | **+38.99%** | **+8.6pp** | +2.47 | **+2.76** | **+0.29** | **-8.83%** (improved!) |
+| sym_emb | +29.18% | +32.12% | +2.9pp | +2.38 | +2.37 | -0.01 | -10.40% |
+| cs_attn | +26.45% | +27.52% | +1.1pp | +2.24 | +2.02 | -0.22 | -7.39% |
+| aug_ext | +15.29% | +16.00% | +0.7pp | +1.81 | +1.84 | +0.03 | -9.22% |
+
+**핵심 발견**:
+1. **k=8은 universally 알파 상승** but Sharpe·MDD 영향은 변형별로 다름.
+2. **mh_head + k=8가 유일한 win-win** (chain ↑↑, Sharpe ↑↑, MDD ↑) — 다른 변형은 chain은 늘지만 Sharpe/MDD 트레이드오프.
+3. **baseline에서도 k=8이 의미 있음**: chain +7pp, Sharpe +0.09 — k=10이 default였지만 sub-optimal.
+4. cs_attn은 k=8에서 Sharpe -0.22 — 다른 신호 특성상 concentration이 노이즈 증폭.
+
+**해석**: k=8이 진짜 sweet spot인 건 mh_head 같은 "noise-reduced + alpha-concentrated" 신호 (3-head averaging 효과). cs_attn 같은 "diffuse cross-sectional" 신호는 더 큰 k가 적합.
+
+---
+
+## 사이클 12 — EMA α 스윕 (5-seed mh_head + k=8)
+
+**가설**: 현재 α=0.6 default. 다른 α에서 더 좋을까?
+
+**결과** (mh_head 5-seed + k=8 + cap=0.06):
+
+| α | chain | MDD | Sharpe | ann/y |
+|---|---|---|---|---|
+| 0.4 | +33.84% | -9.64% | +2.20 | +68.62% |
+| 0.5 | +35.97% | -8.32% | +2.35 | +72.94% |
+| 0.6 (현재) | +38.49% | -8.13% | +2.54 | +78.05% |
+| **0.7** | **+40.28%** | **-8.01%** | **+2.69** | **+81.67%** ← NEW BEST |
+| 0.8 | +39.30% | -7.87% | +2.65 | +79.69% |
+| 0.9 | +37.28% | -7.60% | +2.55 | +75.60% |
+| 1.0 (no EMA) | +35.50% | -7.01% | +2.51 | +71.99% |
+
+**핵심**: α=0.7이 새 sweet spot. chain +1.79pp, Sharpe +0.15 향상.
+
+**메모리 충돌**: feedback A1_EMA_5win은 285 universe + baseline csmlp + k=10에서 α=0.7가 MDD ↑↑ 한다고 기록. 여기 mc150 + mh_head + k=8에서는 정반대. **alpha 최적값은 모델·k·universe 변경 시 재측정 필요**.
+
+검증된 최종 BEST: **mh_head 5-seed + k=8 + α=0.7 + cap=0.06 = Sharpe 2.69 / +81.67%/y / MDD -8.01%**.
+
+원본 baseline (3-seed k=10 α=0.6) 대비:
+- Sharpe +0.47 (2.22 → 2.69)
+- chain +10.7pp (29.56% → 40.28%)
+- MDD 1.9pp 개선
+- ann/y +21.7pp (59.94% → 81.67%) — **+36% relative**
+
+---
+
+## 사이클 9 — Cap theta 스윕 (k=8 위)
+
+**가설**: k=8에서 cap_f15_v2 theta 변경 시 PnL 바뀌나?
+
+**결과** (3-seed at k=8):
+
+| theta | chain | MDD | Sharpe |
+|---|---|---|---|
+| nocap | +36.78% | -11.39% | +2.57 |
+| 0.04 | +26.35% | -9.03% | +2.26 (조이면 알파 ↓) |
+| 0.05 | +34.47% | -8.26% | +2.59 |
+| **0.06 (현재)** | **+38.99%** | -8.83% | **+2.76** ← BEST |
+| 0.08+ | +36.78% | -11.39% | +2.57 (= nocap) |
+
+**결론**: 현재 cap=0.06이 sweet spot. 풀어주거나 조이거나 모두 ↓. 추가 튜닝 불필요.
+
+---
+
+## 사이클 19 — 285 universe 일반화 테스트
+
+**가설**: mc150 BEST (mh_head + k=8 + α=0.75 + cap=0.06)가 285 universe에서도 통하나?
+
+**실험**: 
+1. 285 universe에 mh_head 5 시드 × 5 윈도우 학습 (25 새 모델)
+2. cap-only (mc150과 동일 stack) 적용
+3. 비교 baseline: 285 csmlp 5-seed × 5 윈도우 cap-only
+
+**결과** (5-seed cap-only on 285):
+
+| window | baseline csmlp | mh_head |
+|---|---|---|
+| recent | +15.46% / Sh +2.48 | +18.68% / Sh +2.95 |
+| h1 | -39.30% / Sh -6.30 | -23.65% / Sh -5.55 |
+| w1 | +20.38% / Sh +5.40 | +10.00% / Sh +2.31 |
+| h2 | -4.87% / Sh -1.00 | -11.71% / Sh -2.67 |
+| w2 | +11.85% / Sh +2.31 | +4.29% / Sh +0.80 |
+| **chain 5w** | **+3.53% / Sh +0.13** | **-2.38% / Sh -0.09** |
+
+**핵심 발견**:
+1. **mc150 BEST는 285 universe로 직접 일반화 안 됨**. 둘 다 chain 거의 0%, MDD -33%~-50% catastrophic.
+2. mh_head가 일부 윈도우(recent, h1)에선 baseline 대비 우위 있지만 다른 윈도우(w1, h2, w2)에선 ↓.
+3. **cap-only는 285에선 부족**. 285 BEST(Sh 2.88)는 σ_xs gates(G1+G4+H4+I1) 필수.
+4. mc150이 작은 universe (137 syms, 시총 top + amihud 필터)라 inherent 신호 quality 높음 → 단순 cap만으로 OK.
+5. 285는 wider universe (285 syms) → 신호 quality 분산 → σ_xs로 low-confidence regime 차단 필수.
+
+**해석**:
+- mh_head의 architecture 효과는 "noise reduction" — universe 좁을 때 효과 ↑.
+- universe 넓을 때 architecture < gate stack의 영향력.
+- 즉 mc150 BEST는 mc150-specific. 285 BEST와는 별개 시스템.
+
+## 사이클 23 — 위험가드 실험 (per-coin abs cap + freq cap)
+
+**가설**: 단일 코인 집중 risk를 묶으면 alpha vs Sharpe vs MDD 트레이드오프?
+
+**실험**: BEST 위에 추가 게이트 적용:
+- abs_cap_X: 단일 (bar, coin) |w| 클리핑 ≤ X
+- freq_cap_X: 한 코인 윈도우당 max X% bars
+
+**결과** (5-seed mh_head + k=8 + α=0.75 + cap=0.06 위에):
+
+| 변형 | chain | MDD | Sharpe | ann/y |
+|---|---|---|---|---|
+| baseline | +40.43% | -7.94% | +2.72 | +81.99% |
+| abs_cap_15 | +21.55% | -4.70% | +2.47 | +43.70% |
+| abs_cap_20 | +22.88% | -4.88% | +2.48 | +46.39% |
+| abs_cap_30 | +26.58% | -4.61% | +2.61 | +53.90% |
+| abs_cap_40 | +28.94% | -5.08% | +2.64 | +58.69% |
+| **freq_cap_50** | **+42.29%** | -7.94% | **+2.85** | **+85.75%** ✨ |
+| freq_cap_70 | +40.43% | -7.94% | +2.72 | (no bind) |
+| freq_cap_85 | +40.43% | -7.94% | +2.72 | (no bind) |
+
+**핵심 발견**:
+1. **abs_cap (절대 가중치 cap)**: 모든 값에서 chain 크게 ↓ (40→21~29). MDD 개선되지만 Sharpe도 ↓. **알파 죽이는 가드 — 사용 금지**.
+2. **freq_cap_50**: **chain +1.86pp, Sharpe +0.13** 미세 향상 (SIRENUSDT/VVVUSDT 같은 high-frequency 코인을 절반 빈도로 강제). MDD 동일.
+3. freq_cap_70/85는 안 묶임 (top freq 코인들이 ≤70%라).
+
+**라이브 권장**:
+- abs_cap 추가하지 말 것 (알파 손실)
+- freq_cap_50 추가 가능 (Sharpe 0.13 향상, free)
+
+**최종 BEST 업데이트**: mh_head + k=8 + α=0.75 + cap=0.06 + **freq_cap_50** = chain +42.29% / Sharpe **+2.85** / MDD -7.94% / **+85.75%/y**
+
+(원본 baseline 3-seed Sh 2.22 대비 Sharpe +0.63 / ann/y +43% 향상)
+
+⚠️ 주의: freq_cap_50의 +1.86pp 향상은 작은 마진. 5-seed 노이즈 가능. 추가 검증 (10-seed 또는 다른 윈도우) 권장.
+
+---
+
+## 사이클 22 — 285 csmlp α sweep (simplified stack)
+
+**가설**: 285 simplified stack에서 csmlp BEST α는?
+
+**결과** (5-seed csmlp 285 simplified stack):
+
+| α | chain | MDD | Sharpe |
+|---|---|---|---|
+| 0.60 | +32.81% | -16.71% | 1.43 |
+| 0.70 | +31.03% | -17.75% | 1.39 |
+| 0.75 | +34.39% | -18.17% | 1.53 |
+| **0.80** | **+37.43%** | -19.43% | **1.65** ← 285 csmlp BEST |
+| 0.85 | +33.55% | -18.51% | 1.41 |
+| 0.90 | +20.48% | -19.52% | 0.83 |
+| 1.00 | +3.75% | -31.56% | 0.14 |
+
+**핵심**:
+- **285 csmlp 최적 α=0.80** (mc150 csmlp BEST는 α=0.85, mc150 mh_head는 α=0.75)
+- 각 universe×model 조합마다 α 최적값 다름. 단일 default 없음.
+- α=0.80에서 285 csmlp Sh 1.65 — 여전히 published 285 BEST (2.88)에 못 미침. 이유: K3/LONG×0.5 gates 누락 + 5-seed vs 7-seed.
+
+---
+
+## 사이클 21 — 285 ensemble combos (simplified stack)
+
+**가설**: mh_head를 285 ensemble에 추가하면 도움이 되는가?
+
+**실험**: 5-seed 각 모델 × 5 windows × G1+G4+H4+I1+F1.5 (best_stack의 K3/LONG×0.5는 미구현 — 단순화 버전).
+
+**결과**:
+
+| combo | chain | MDD | Sharpe | ann/y |
+|---|---|---|---|---|
+| **csmlp_only (5seed)** | **+34.39%** | -18.17% | **+1.53** | +42.12% |
+| tabm_only | +23.86% | -18.46% | +1.03 | +29.23% |
+| csmlp_tabm | +29.32% | -20.21% | +1.20 | +35.92% |
+| mh_only | +29.92% | -18.21% | +1.18 | +36.65% |
+| mh_csmlp | +23.71% | -22.49% | +0.98 | +29.04% |
+| mh_tabm | +20.60% | -24.13% | +0.90 | +25.23% |
+| **mh_csmlp_tabm (3-way)** | +32.39% | -19.50% | +1.34 | +39.67% |
+
+**참고**: 기존 285 BEST(7-seed, K3/LONG×0.5 포함 stack) = Sharpe 2.88. 이번 simplified stack은 K3/LONG×0.5 미포함이라 절대 수치 더 낮음. 상대 비교만 의미 있음.
+
+**상대 비교 결과**:
+- mh_head 추가 (3-way) > csmlp+tabm 2-way: Sharpe 1.34 vs 1.20 (+0.14 향상)
+- but csmlp_only > 모든 ensemble: Sharpe 1.53 — 단일 모델이 가장 좋음 (이 simplified setup에서)
+- mh+csmlp 또는 mh+tabm 페어는 모두 단독보다 ↓ (다일루션)
+
+**결론**: 단순화된 stack 비교상 mh_head 3-way 추가는 약간 도움 (+0.14 Sh). 하지만 K3/LONG×0.5 같은 model-specific gate 없는 단순화 setup이라 fully proper 285 BEST와는 비교 어려움. 진짜 comparison은 K3/LONG×0.5 포함한 풀 stack 비교가 필요 (best_stack_lhfix 어댑테이션 + 추가 ~1시간 작업).
+
+## 사이클 20 — 285 mh_head with FULL gate stack (G1+G4+H4+I1+F1.5)
+
+**가설**: 285에 σ_xs gate stack 더하면 mh_head가 285 BEST(csmlp+tabm ensemble)에 근접하나?
+
+**결과** (5-seed mh_head + k=8 + α=0.75 + G1+G4+H4+I1+F1.5):
+
+| window | sum | MDD | Sharpe |
+|---|---|---|---|
+| recent | +27.65% | -13.79% | +3.51 |
+| h1 | -4.09% | -4.58% | -2.17 |
+| w1 | +0.71% | -7.83% | +0.20 |
+| h2 | -9.47% | -13.57% | -2.23 |
+| w2 | +15.12% | -5.89% | +2.81 |
+| **chain 5w** | **+29.92%** | **-18.21%** | **+1.18** (ann +36.65%) |
+
+vs 285 BEST (memory project_binance_o2_best.md): chain +76.29% / MDD -16.72% / Sharpe **+2.88** / +93%/y (csmlp+tabm I1+F1.5 7-seed ensemble)
+
+→ **mh_head 단독 + gate stack은 285 BEST의 절반 정도 성능**. csmlp+tabm 듀얼 architecture ensemble이 압도적.
+
+**최종 결론**:
+- mc150 (137 syms): mh_head + k=8 + α=0.75 = honest BEST (Sh 2.72)
+- 285 (285 syms): csmlp+tabm ensemble I1+F1.5 = 압도적 BEST (Sh 2.88), mh_head 추가 gain 없음
+- universe 크기 별로 best architecture가 다름. 단일 신호 → ensemble 필요성 ↑.
+
+**Implication**: 라이브 진입 시
+- mc150 universe 좁게 가면 mh_head 단일 모델로 충분 (간단)
+- 285 universe 넓게 가면 csmlp+tabm ensemble 유지 (복잡하지만 알파 ↑)
+- 두 universe는 별개 시스템으로 운영 권장
+
+---
+
+## 사이클 18 — Per-symbol attribution at BEST
+
+**가설**: BEST 설정에서 어떤 코인이 알파를 만들고 어디 위험이 집중됐는지.
+
+**결과** (5-seed mh_head + α=0.75 k=8 cap=0.06, 3 windows 합):
+
+**LONG vs SHORT 분배 (chain PnL)**:
+- LONG: +353.47% (76.7% share) ← 모든 알파의 대부분
+- SHORT: +107.37% (23.3% share)
+- → 사실상 LONG-heavy 전략
+
+**Top 5 long-biased coins** (LONG bar - SHORT bar):
+- SIRENUSDT 89/1 (거의 항상 LONG)
+- VVVUSDT 80/10
+- BSVUSDT 75/12
+- TRXUSDT 68/12
+- SUNUSDT 68/15
+
+**Top 5 short-biased coins**:
+- XMRUSDT 6/81 (거의 항상 SHORT)
+- GALAUSDT 15/72
+- SUIUSDT 16/72
+- NEARUSDT 20/69
+- CRVUSDT 20/68
+
+**Concentration risk**:
+- SIRENUSDT 28.7% mean |w| ← 큼
+- STABLEUSDT 16.5%, VVVUSDT 16.3%
+- 상위 3개 ~60% concentration. Single-coin risk 큼.
+
+**Per-window 알파 출처 (regime sensitivity)**:
+| window | LONG pnl | SHORT pnl |
+|---|---|---|
+| recent | +372% | +69% |
+| h1 | **-130%** ← LONG 위험 | +61% |
+| w1 | +111% | -22% |
+
+→ **regime-dependent**: h1에서 LONG 토토했고 SHORT가 살림. w1은 반대. recent는 양방향 다 성공.
+→ 라이브에서 regime 바뀌면 알파 깨질 위험. 모델은 최근 성격에 맞춰져 있음.
+
+**라이브 리스크 시그널**:
+1. **단일 코인 의존**: SIRENUSDT 28.7% concentration
+2. **LONG 편향**: 알파의 76% from longs — bear regime 위험
+3. **regime 의존성**: h1에서 long 손실 -130% — 비슷한 regime 오면 -drawdown 가능
+
+**권장 액션** (라이브 진입 시):
+- per-coin cap 추가 (예: 단일 코인 max 15%)
+- LONG/SHORT 균형 강제 (현재 76/23 → 50/50로?)
+- regime detector 모니터링 (long-only mode trigger 회피)
+
+---
+
+## 사이클 17 — 단일 시드 at BEST config (architecture vs ensemble)
+
+**가설**: mh_head 우위는 architecture 자체인가, ensemble 효과인가?
+
+**실험**: BEST config(각각 최적 α, k=8)에서 5 시드 단독 측정.
+
+**결과** (5-seed at BEST α each):
+
+| | mh_head (α=0.75) | baseline (α=0.85) | 차이 |
+|---|---|---|---|
+| 단독 mean Sharpe | 2.46 | 2.15 | **+0.31** |
+| 단독 std Sharpe | 0.38 | 0.38 | 같음 |
+| 단독 Sharpe range | 2.06–2.86 | 1.52–2.44 | mh 더 high-end |
+| 5-seed ensemble Sharpe | **2.72** | 2.59 | +0.13 |
+| ensemble 효과 | +0.26 | +0.44 | baseline 더 큰 효과 |
+
+**핵심 발견**:
+1. **architecture 자체 우위 +0.31 Sharpe** (mh_head 단독 vs baseline 단독). 진짜 architecture 효과.
+2. **ensemble은 baseline을 더 끌어올림** (baseline +0.44 vs mh +0.26). baseline는 internal averaging 없어서 외부 ensemble 효과가 큼.
+3. **5-seed에서 갭이 좁아짐** (+0.31 → +0.13). 무한 seed에서 baseline ensemble이 mh를 따라잡을 가능성. 하지만 학습 비용 5배.
+4. mh_head 단독 std 0.38 — 메모리에 남긴 "내부 averaging 효과" 대부분은 BEST config(α 0.75)에서는 약화. (default α=0.6 k=10에서는 std 0.143).
+
+**해석**: mh_head는 "데이터 효율적" 아키텍처. 적은 시드로도 좋은 성능. baseline은 컴퓨팅 부어서 따라잡을 수 있음. 라이브 환경에서 시드 5개 vs 더 많은 시드 트레이드오프.
+
+---
+
+## 사이클 13/14/15/16 — 미세 튜닝
+
+### α 미세 그리드 (mh_head 5-seed k=8)
+
+| α | chain | Sharpe | MDD |
+|---|---|---|---|
+| 0.65 | +39.19% | 2.60 | -8.06% |
+| 0.70 | +40.28% | 2.69 | -8.01% |
+| 0.72 | +40.31% | 2.70 | -7.98% |
+| **0.75** | **+40.43%** | **2.72** | -7.94% ← BEST |
+| 0.78 | +39.94% | 2.69 | -7.90% |
+
+### cap 미세 그리드 (at α=0.75)
+
+| cap | chain | Sharpe | MDD |
+|---|---|---|---|
+| 0.045 | +28.24% | 2.13 | -6.58% (too tight) |
+| 0.050 | +33.50% | 2.41 | -7.09% |
+| 0.055 | +38.94% | 2.67 | -7.73% |
+| **0.060 (current)** | **+40.43%** | **2.72** | -7.94% ← BEST |
+| 0.065 | +39.29% | 2.59 | -9.40% |
+| 0.070+ / nocap | +38.10% | 2.50 | -10.47% |
+
+→ cap=0.06 확정 sweet spot.
+
+### n_heads at α=0.75 k=8
+
+| variant | chain | Sharpe | MDD |
+|---|---|---|---|
+| **mh3** (3 heads) | +40.43% | **2.72** | -7.94% ← BEST |
+| mh5 | +37.29% | 2.55 | -8.75% |
+| mh7 | +36.24% | 2.52 | -9.56% |
+
+→ n_heads=3 최적 (이미 H14b에서 같은 결론, 다시 확인).
+
+### baseline α 스윕 (k=8, 5-seed)
+
+| α | baseline chain | baseline Sharpe |
+|---|---|---|
+| 0.60 (current default) | +33.07% | 2.19 |
+| 0.70 | +35.36% | 2.33 |
+| 0.75 | +36.87% | 2.42 |
+| 0.80 | +38.26% | 2.51 |
+| **0.85** | **+39.32%** | **2.59** ← baseline BEST |
+
+→ **baseline 최적 α=0.85** (mh_head는 0.75). 모델별로 α 최적값 다름.
+
+→ **mh_head 진짜 우위 (둘 다 α 최적):**
+- baseline 0.85 k=8: Sh 2.59 / chain +39.32% / MDD -9.66%
+- mh_head 0.75 k=8: Sh **2.72** / chain **+40.43%** / MDD **-7.94%**
+- 차이: Sharpe +0.13, chain +1.11pp, MDD -1.72pp (mh_head 우위)
+
+α=0.6 default 비교 시 보였던 +0.35 Sharpe 우위는 baseline α 최적 후 +0.13으로 축소. 여전히 의미 있는 차이지만 솔직한 측정.
+
+---
+
+## 사이클 11 — 5-seed final matrix (BEST CASE)
+
+**가설**: 3-seed 결과가 lucky했으니, baseline + mh_head 5-seed로 공정 비교.
+
+**결과** (H21 + H22):
+
+| variant | k=10 | k=8 |
+|---|---|---|
+| baseline 5-seed | Sh 2.06 / +26.83% / -9.10% | Sh 2.19 / +33.07% / -10.50% |
+| **mh_head 5-seed** | Sh 2.26 / +29.41% / -9.79% | **Sh 2.54 / +38.49% / -8.13%** ✨ |
+| mh + baseline 5-seed | — | Sh 2.52 / +38.48% / -9.01% (동등) |
+
+**최종 검증 BEST**: **mh_head 5-seed + k=8 (Sh 2.54 / chain +38.49% / MDD -8.13% / +78.05%/y)**
+
+baseline 대비 우위 (5-seed at k=8):
+- Sharpe: +0.35 (2.19 → 2.54)
+- chain: +5.42pp
+- MDD: +2.37pp 개선
+
+k=8 효과 (5-seed):
+- baseline: Sh +0.13 (2.06 → 2.19)
+- **mh_head: Sh +0.28 (2.26 → 2.54)**
+- mh_head가 baseline 대비 k=8 효과 2배. 진짜 시너지.
+
+mh + baseline 5+5 ensemble은 mh_head 단독과 거의 동등 (Sh 2.52). baseline 신호가 redundant.
+
+---
+
+## 사이클 8 — Ensemble at k=8
+
+**가설**: H11에서 mh_head + sym_emb가 simple-avg로 mh_head 단독보다 살짝 좋았음 (k=10). k=8에서도 그러나?
+
+**실험**: k=8에서 simple-avg 6 combos.
+
+**결과**:
+
+| tag | chain | MDD | Sharpe | ann/y |
+|---|---|---|---|---|
+| mh (단독) | +38.99% | **-8.83%** | **+2.76** | +79.07% |
+| sym | +32.12% | -10.40% | +2.37 | +65.14% |
+| mh_sym | +37.19% | -9.92% | +2.69 | +75.41% |
+| mh_sym_baseline | +38.60% | -11.11% | +2.54 | +78.27% |
+| **mh_baseline** | **+40.68%** | -10.29% | +2.65 | **+82.48%** ✨ |
+| mh_cs | +27.62% | -11.39% | +2.04 | +56.01% |
+
+**핵심 발견**:
+1. **mh_head + baseline (k=8): chain +40.68% / +82.48%/y — biggest absolute return**.
+2. **mh_head 단독 (k=8): Sharpe 2.76 / MDD -8.83% — best risk-adjusted**.
+3. 두 옵션이 Pareto-optimal:
+   - 절대수익 우선 → mh_head + baseline
+   - risk-adjusted → mh_head 단독
+4. cs_attn 추가는 k=8에서도 hurt (mh_cs Sh 2.04). 일관됨.
+
+**최종 후보**: 
+- 권장 안전: mh_head solo + k=8 (Sh 2.76, +79%/y, MDD -8.83%)
+- 권장 공격: mh_head + baseline + k=8 (Sh 2.65, +82.48%/y, MDD -10.29%)
+
+---
+
+## 사이클 5 — 시드별 분산
+

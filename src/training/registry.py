@@ -61,11 +61,15 @@ class BaseTrainer(ABC):
         use_offsets = (npy_dir / "X.npy").exists() and (npy_dir / "offsets.json").exists()
 
         if use_offsets:
+            from src.data.offsets_override import maybe_patch_offsets_from_cfg
+
             X = np.load(npy_dir / "X.npy", mmap_mode="r")
             y = np.load(npy_dir / "y.npy", mmap_mode="r")
             log.info(f"Memmap loaded (offsets mode): X={X.shape[0]:,}")
+            offsets_dict = json.load(open(npy_dir / "offsets.json"))
+            offsets_dict = maybe_patch_offsets_from_cfg(offsets_dict, npy_dir, self.cfg.data)
             tr_indices, va_indices = build_splits(
-                json.load(open(npy_dir / "offsets.json")), y,
+                offsets_dict, y,
                 vol_idx=self._vol_idx, target_idx=self._h1,
             )
             log.info(f"After filter: train={len(tr_indices):,}, val={len(va_indices):,}")
