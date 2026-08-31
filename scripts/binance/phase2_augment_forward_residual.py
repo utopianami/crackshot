@@ -21,8 +21,8 @@ from src.features.binance_btc_residual import compute_forward_residual_returns
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-KLINES_DIR = REPO_ROOT / "BRAIN" / "binance" / "data" / "klines_5m"
-FEAT_DIR = REPO_ROOT / "BRAIN" / "binance" / "data" / "features_5m"
+KLINES_DIR = Path("/shared/binance-simmons/backtest/data/klines_5m")
+FEAT_DIR = Path("/shared/binance-simmons/backtest/data/features_5m")
 
 HORIZONS = {"1h": 12, "4h": 48, "24h": 288}
 BETA_WINDOW = 2016  # 7d × 288

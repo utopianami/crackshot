@@ -38,9 +38,12 @@ def build_abs_to_ts(
     import pandas as pd
 
     mt = pd.read_parquet(mt_path)
+    # Builder writes the column as "stock" (src/npy/builder.py); accept legacy
+    # "symbol" too for older NPYs.
+    sym_col = "stock" if "stock" in mt.columns else "symbol"
     per_sym_ts: dict[str, list] = {
         sym: g.sort_values("timestamp")["timestamp"].tolist()
-        for sym, g in mt.groupby("symbol", sort=False)
+        for sym, g in mt.groupby(sym_col, sort=False)
     }
 
     abs_to_ts: dict[int, object] = {}

@@ -61,16 +61,20 @@ class TabMTrainer(BaseTrainer):
         in_features, X_train, y_train, X_val, y_val, tr_indices, va_indices = \
             self._load_data(npy_dir, tab_cfg)
 
-        # silent-NaN guard
-        if np.isnan(X_train).any() or np.isnan(X_val).any():
-            n = int(np.isnan(X_train).sum() + np.isnan(X_val).sum())
+        # silent-NaN guard: only check rows actually used for training.
+        # y memmap has NaN tails per split by design (compute_labels forward
+        # return); build_splits already filters them from tr/va_indices.
+        from src.training.nan_guard import has_nan_at
+        if has_nan_at(X_train, tr_indices) or has_nan_at(X_val, va_indices):
             raise ValueError(
-                f"[silent-NaN guard] X has {n} NaN values. "
+                "[silent-NaN guard] X has NaN at training rows. "
                 "Rebuild NPY before training. (feedback_no_silent_nan_imputation.md)"
             )
-        if np.isnan(y_train).any() or np.isnan(y_val).any():
-            n = int(np.isnan(y_train).sum() + np.isnan(y_val).sum())
-            raise ValueError(f"[silent-NaN guard] y has {n} NaN values.")
+        if has_nan_at(y_train, tr_indices) or has_nan_at(y_val, va_indices):
+            raise ValueError(
+                "[silent-NaN guard] y has NaN at training rows "
+                "(should have been filtered by build_splits)."
+            )
 
         key = jax.random.PRNGKey(self.cfg.seed)
         key, model_key = jax.random.split(key)

@@ -90,11 +90,27 @@ def _log_eval(predictions, actual, prefix=""):
         log.info(f"  Bot {k:>4s}%: acc={metrics[f'bot{k}pct_acc']:.1%}, mean_ret={metrics[f'bot{k}pct_mean_return']:.6f}")
 
 
-def main():
+def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train a model")
     parser.add_argument("-c", "--config", type=str, default=None, help="YAML config file")
+    parser.add_argument(
+        "--run_name", type=str, default=None,
+        help="Explicit run folder name (overrides default {model}_{ts_suffix}). "
+             "Used for both saved_model_path and inference_path subdir.",
+    )
     parser.add_argument("overrides", nargs="*", help="Config overrides (key=value dotlist)")
-    args = parser.parse_args()
+    return parser
+
+
+def _resolve_run_name(run_name: str | None, model_name: str, ts_suffix: str) -> str:
+    """Return run_name if non-empty, else fall back to default `{model}_{ts}`."""
+    if run_name:
+        return run_name
+    return f"{model_name}_{ts_suffix}"
+
+
+def main():
+    args = _build_arg_parser().parse_args()
 
     # Setup logging
     logging.basicConfig(
@@ -128,7 +144,8 @@ def main():
     # improvement (crash-safe). If training finishes cleanly, trainer.save()
     # is called again at the end below, which is a no-op rewrite of the same
     # best weights.
-    save_path = Path(cfg.paths.saved_model_path) / f"{model_name}_{ts_suffix}"
+    run_name = _resolve_run_name(args.run_name, model_name, ts_suffix)
+    save_path = Path(cfg.paths.saved_model_path) / run_name
     save_path.mkdir(parents=True, exist_ok=True)
     trainer._checkpoint_save_path = save_path
     log.info(f"Best-model checkpoint path: {save_path}")
@@ -163,7 +180,7 @@ def main():
         if is_classification(model_name):
             _log_eval_cls(test_predictions, test_actual, prefix="TEST ")
             # Save predictions for evaluate_topk.py
-            out_dir = Path(cfg.paths.inference_path) / f"{model_name}_{ts_suffix}"
+            out_dir = Path(cfg.paths.inference_path) / run_name
             out_dir.mkdir(parents=True, exist_ok=True)
             np.save(out_dir / "test_probs.npy", test_predictions)
             np.save(out_dir / "test_actual.npy", test_actual)
