@@ -1,6 +1,14 @@
 # Crackshot
 
-A Python (JAX) research project on cross-sectional return prediction in financial markets. This repository shows how I work through a research question: from the question, to data, a baseline, a model, validation, and an honest statement of limits, with the records of each step kept.
+A research environment I built to study cross-sectional return prediction in the KOSPI and Binance markets. It connects research meetings, interchangeable JAX models, and a written record of what each experiment changed.
+
+## How I run experiments
+
+| Part | What I built | Guide |
+| --- | --- | --- |
+| **JAX experiment framework** | Trainers register their architectures and defaults. Selecting a different model in YAML reuses the training entry point and dataset split. | [Swap TabM and FT-Transformer](research/jax.md) |
+| **Alpha Squad** | I set a meeting question and supply the previous result. Five agent roles review the literature, challenge the proposal, and specify a comparison I can run. | [Follow an agenda through to an experiment](alpha_squad/README.md) |
+| **AutoResearch** | Each iteration records the hypothesis, baseline, fixed conditions, measurements, and decision. The next research session reads that record before choosing what to change. | [Read the protocol and session logs](autoresearch/README.md) |
 
 ## The research question
 
@@ -20,32 +28,14 @@ The Binance portfolio-loss study, step by step. Each row links to the code or th
 | Step | What was done | Where to look |
 | --- | --- | --- |
 | **1. Question** | Three classification models had long/short Sharpe between −0.01 and +1.10 before costs, and all three turned negative at a 5 bp one-way cost. Question: does training directly on portfolio return close the gap between prediction ranking and after-cost performance? | [Meeting agenda and transcript](alpha_squad/meetings/meeting_20260420_171228.md) · [Research plan with go/no-go gates](autoresearch/records/binance/2026-04-20-plan.md) |
-| **2. Data** | 5-minute bars sampled every four hours; 298 assets passed the universe filter. Targets are forward returns with the BTC component removed. Twelve candidate features were screened by information coefficient before any model was trained. | [BTC-residual features](src/features/binance_btc_residual.py) · [Funding features](src/features/binance_funding_clock.py) · [Array builder](scripts/binance/build_npy_phase2.py) · [Phase 0 verdict](autoresearch/records/binance/phase0-verdict.md) |
+| **2. Data** | 5-minute bars sampled every four hours; 298 assets passed the universe filter. Targets are forward returns with the BTC component removed. The Phase 0 verdict reports that 6 of 15 candidate features cleared its four-hour information-coefficient threshold. | [BTC-residual features](src/features/binance_btc_residual.py) · [Funding features](src/features/binance_funding_clock.py) · [Array builder](scripts/binance/build_npy_phase2.py) · [Phase 0 verdict](autoresearch/records/binance/phase0-verdict.md) |
 | **3. Baseline** | FT-Transformer, TabM, and CS-MLP trained as 5-class classifiers on the same split, labels, and evaluation, so the comparison is fair. | [Configs](configs/) · [Shared training entry point](scripts/train.py) |
 | **4. Model** | The model outputs one score per asset; a differentiable top-k operator turns scores into long and short weights; the loss is the negative portfolio return on residual returns, with penalties on beta exposure and turnover. | [Loss](src/training/losses/portfolio.py) · [Long/short top-k head](src/training/heads/long_short_topk.py) · [Trainer](src/training/trainers/cs_mlp_portfolio.py) |
 | **5. Validation** | The first config reached zero validation loss, and inspection showed why: every asset received the same score. Loss alone was not a sufficient check, so score dispersion was examined alongside it. Later configs were evaluated per seed and as a three-seed ensemble on a held-out window, after costs. | [Experiment record](research/records/binance-portfolio.md) · [Backtest](scripts/binance/backtest_portfolio.py) · [Unit tests](tests/binance/) |
-| **6. Limits** | In the March to April 2025 window the three-seed ensemble still had negative net Sharpe (−0.32). The follow-up changed several settings at once, so the cause of the recovery is not identified. Three seeds in one window do not estimate failure risk elsewhere. | [Results and limits](research/binance.md) |
+| **6. Limits** | The original March–April 2025 record reports a three-seed ensemble net Sharpe of −0.32. Its value under the corrected backtest is unknown. The follow-up changed several settings at once, so the cause of the recovery is not identified. Three seeds in one window do not estimate failure risk elsewhere. | [Results and limits](research/binance.md) |
 | **7. Next question** | Other iterations examined seed variance and ensemble weighting. | [Seed variance summary](autoresearch/records/binance/stage4-seed-variance.md) · [April 28 log](autoresearch/records/binance-2026-04-28.md) |
 
 A second study asks a different kind of question: can the evaluation itself be trusted? Models trained from the same config gave different backtest results. The study found a bug that dropped rows at inference, fixed it with a regression test, then measured how much each of eight backtest conditions amplifies run-to-run variance. [research/kospi.md](research/kospi.md)
-
-## What supports the process
-
-Three parts make this repeatable. Each has its own guide.
-
-| Part | Role in the process | Guide |
-| --- | --- | --- |
-| **JAX experiment framework** | Fair comparison. A new model is one architecture file, one trainer, and a YAML entry; shared training code does not change. Dataset-specific values live in config, so the same trainer runs on both markets. | [research/jax.md](research/jax.md) |
-| **AutoResearch** | Continuity. Every iteration leaves a hypothesis, the fixed conditions, the numbers, and a verdict (`keep`, `discard`, `crash`) in files, so the next session starts from the record, not from memory. | [autoresearch/README.md](autoresearch/README.md) |
-| **Alpha Squad** | Question selection. A multi-agent meeting challenges each proposal from the feature, evaluation, and implementation sides, using related papers and past results, before compute is spent. | [alpha_squad/README.md](alpha_squad/README.md) |
-
-```
-Alpha Squad            AutoResearch                 JAX framework
-(what to test next) -> (hypothesis, baseline,    -> (swap model or input,
-        ^               fixed conditions)            train, evaluate)
-        |                                                  |
-        +------ verdict and reasons, written to files <----+
-```
 
 ## Evidence that the process ran
 
@@ -57,19 +47,29 @@ The records below are the original working files, not summaries written afterwar
 - **A don't-repeat list** of failed approaches and mistakes. [File](autoresearch/records/kospi/dont-repeat.md)
 - **The git history**, which shows the framework, the models, and the records being built over the same weeks.
 
-## Run it
+## Run the examples
 
-Requires Python 3.12 and `uv`. No market data or external account is needed.
+From the repository root, use Python 3.12 and `uv`. Both examples run on CPU without a market-data account.
 
 ```bash
-# 35 tests: trainer auto-registration, config overrides, portfolio loss and training step, inference filter
-uv run --locked python -m pytest -q
-
-# Train two different models for one epoch on the same synthetic data through the same entry point
 uv run --locked python -m examples.compare_trainers
+uv run --locked python -m examples.backtest_sample
+uv run --locked python -m pytest -q
 ```
 
-The numbers in the write-ups come from the records written at the time. Re-running full training and backtests needs the market data and preprocessed arrays for those periods, which are not in this repository.
+The first command trains TabM and FT-Transformer on the same generated inputs. The second sends a checked-in synthetic feature panel through the Binance array builder and backtester with a seeded example scorer. The CSV contains 20 timestamped observations for eight fictional assets, with gaps and a change in the available symbols. [Sample CSV](examples/data/portfolio_features.csv) · [Backtest example](examples/backtest_sample.py)
+
+| Evaluated time (UTC) | What the sample checks | L1 turnover (approx.) |
+| --- | --- | ---: |
+| 00:00 | Open the first portfolio from cash | 1.214 |
+| 08:00 | Close the original four assets and open four different ones | 2.428 |
+| 12:00 | Adjust holdings as a fifth asset enters | 1.046 |
+
+Only one asset has a 04:00 observation. That bar is skipped, so the next return is recorded at 08:00. Turnover is the sum of absolute changes in asset weights, including assets entering and leaving the portfolio.
+
+### Historical data availability
+
+The original KOSPI and Binance market data, derived training arrays, and research checkpoints are unavailable in this public repository. The KOSPI study also used an external backtest engine. Historical results are quoted from the dated research records. The W2 returns, turnover, and net Sharpe have not been recalculated with the corrected UTC sampling and symbol-level transaction costs. The synthetic panel provides a reproducible check of these calculations. [Binance study](research/binance.md) · [KOSPI study](research/kospi.md)
 
 ## Repository layout
 
@@ -77,7 +77,7 @@ The numbers in the write-ups come from the records written at the time. Re-runni
 src/            JAX framework: architectures, trainers, registry, losses, config schema
 configs/        Experiment configs (model, data, and dataset blocks)
 scripts/        Training entry point, evaluation, Binance data builders and backtest
-examples/       Synthetic-data demo of swapping trainers
+examples/       Model-swap demo, portfolio backtest demo, and sample feature CSV
 research/       Write-ups of the two studies, with their original records
 autoresearch/   Research loop: procedure, protocol, session logs, results table
 alpha_squad/    Multi-agent research meeting: agents, literature pipeline, transcripts

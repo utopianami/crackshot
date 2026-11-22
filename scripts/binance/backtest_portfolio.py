@@ -99,7 +99,7 @@ def _build_ts_groups(offsets: dict, y: np.ndarray, split: str, target_idx: int, 
                 i += 1
 
     # Canonical wall-clock grouping for test split.
-    if split == "test" and abs_to_ts:
+    if split == "test" and abs_to_ts is not None:
         ts_map_wc: dict = {}
         for sym, info in offsets.items():
             if universe is not None and sym not in universe:
@@ -148,7 +148,7 @@ def _build_ts_groups(offsets: dict, y: np.ndarray, split: str, target_idx: int, 
     return sorted(ts_map.keys()), ts_map
 
 
-def main():
+def main(argv: list[str] | None = None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-dir", required=True)
     ap.add_argument("--data-dir", required=True)
@@ -173,7 +173,7 @@ def main():
     # Silent-bug guards
     ap.add_argument("--max-skip-rate", type=float, default=0.05,
                     help="Warn if fraction of skipped bars (low entity count) exceeds this.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     universe: set[str] | None = None
     if args.universe_file:
@@ -350,7 +350,11 @@ def main():
     turnovers: list[float] = []
     net_betas: list[float] = []
     min_stocks = max(int(cfg["k_long"]), int(cfg["k_short"])) * 2 + 2
-    w_prev: np.ndarray | None = None
+    # Each symbol owns a contiguous [start, end) block of absolute NPY rows.
+    # Use that block's slot for the lifetime of a position, including on exit.
+    symbol_ends = np.sort([info["end"] for info in orig_offsets.values()])
+    previous_positions = np.zeros(len(symbol_ends), dtype=np.float64)
+    evaluated_times = []
     skipped = 0
     weight_records: list[dict] = []
     score_records: list[dict] = []
@@ -378,10 +382,11 @@ def main():
         w = np.asarray(head_fn(jnp.asarray(scores)))
         port_ret = float(np.sum(w * r))
         net_beta = float(np.sum(w * betas))
-        if w_prev is None or w_prev.shape != w.shape:
-            turn_l1 = float(np.sum(np.abs(w)))
-        else:
-            turn_l1 = float(np.sum(np.abs(w - w_prev)))
+        positions = np.zeros_like(previous_positions)
+        positions[np.searchsorted(symbol_ends, rows, side="right")] = w
+        turn_l1 = float(np.abs(positions - previous_positions).sum())
+        previous_positions = positions
+        evaluated_times.append(rel_t)
         returns.append(port_ret)
         turnovers.append(turn_l1)
         net_betas.append(net_beta)
@@ -404,8 +409,9 @@ def main():
                         "timestamp": info[1],
                         "score": float(sc),
                     })
-        w_prev = w
 
+    if not evaluated_times:
+        raise ValueError(f"No eligible {args.split} bars with at least {min_stocks} assets.")
     returns = np.asarray(returns)
     turnovers = np.asarray(turnovers)
     net_betas = np.asarray(net_betas)
@@ -448,7 +454,7 @@ def main():
     out_csv = mdir / f"backtest_{args.split}.csv"
     import pandas as pd
     pd.DataFrame({
-        "rel_t": sorted_ts[:len(returns)],
+        "rel_t": evaluated_times,
         "port_ret": gross,
         "net_ret": net,
         "turnover_l1": turnovers,

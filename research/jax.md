@@ -28,12 +28,12 @@ uv run --locked python -m scripts.train -c configs/ft_transformer_binance_phase1
 
 ## Swapping the input
 
-Dataset-dependent values never appear in model or trainer code. They are read from two config blocks:
+Two config blocks tell the CS-MLP trainer how to interpret each dataset.
 
 - `data`: where the arrays are and how much to sample (`data_path`, `sample_ratio`, split dates, symbol filters).
 - `dataset`: how to read the labels (`horizon_indices` for which label columns are the prediction horizons, `primary_horizon`, `vol_idx`, and `class_bins` for the return-bucket edges).
 
-The same CS-MLP trainer was used on both markets by changing only these blocks:
+Both markets use the same CS-MLP trainer implementation. The experiments also used different dropout and label-smoothing settings.
 
 | | KOSPI ([config](../configs/cs_mlp_200_base.yaml)) | Binance ([config](../configs/cs_mlp_binance_phase1.yaml)) |
 | --- | --- | --- |
@@ -41,6 +41,8 @@ The same CS-MLP trainer was used on both markets by changing only these blocks:
 | `dataset.horizon_indices` | `[4, 5, 6]` | `[0, 1, 2]` |
 | `dataset.class_bins` | `[-0.01, -0.003, 0.003, 0.01]` | `[-0.02, -0.005, 0.005, 0.02]` |
 | `model.name` | `cs_mlp` | `cs_mlp` |
+| `cs_mlp.dropout` | 0.4 | 0.3 |
+| `cs_mlp.label_smoothing` | 0.15 | 0.10 |
 
 Any of these can also be overridden on the command line, as `data.data_path=...` is above. [Config schema](../src/config/common.py)
 

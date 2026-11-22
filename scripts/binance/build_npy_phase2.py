@@ -24,8 +24,8 @@ from src.features.binance_funding_clock import funding_clock_features
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FEAT_DIR = REPO_ROOT / "data" / "binance" / "features_5m"
-DEFAULT_OUT_DIR = REPO_ROOT / "data" / "binance" / "npy_phase2"
+DATA_ROOT = REPO_ROOT / "data" / "binance"
+DEFAULT_OUT_DIR = DATA_ROOT / "npy_phase2"
 
 FEATURES_BASE = [
     "rv_4h", "amihud_4h",
@@ -37,7 +37,6 @@ FEATURES_CLOCK = ["mins_to_next_funding", "fund_phase_sin", "fund_phase_cos"]
 FEATURES = FEATURES_BASE + FEATURES_CLOCK
 LABELS = ["fwd_res_1h", "fwd_res_4h", "fwd_res_24h", "beta", "vol_dummy", "fwd_funding_4h"]
 FUNDING_FWD_HORIZON_HOURS = 4.0
-FUNDING_PARQUET = REPO_ROOT / "data" / "binance" / "funding_rate.parquet"
 PARQUET_COLS = ["open_time", "symbol"] + FEATURES_BASE + [
     "fwd_res_1h", "fwd_res_4h", "fwd_res_24h", "beta",
 ]
@@ -69,44 +68,30 @@ def _fwd_funding_sum(bar_open_times, fund_ts_ns, fund_rate, horizon_hours: float
     return out.astype(np.float32)
 
 
-def _load_funding_by_symbol() -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    if not FUNDING_PARQUET.exists():
-        print(f"[warn] {FUNDING_PARQUET} not found — fwd_funding_4h will be 0")
+def _load_funding_by_symbol(funding_parquet: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    if not funding_parquet.exists():
+        print(f"[warn] {funding_parquet} not found — fwd_funding_4h will be 0")
         return {}
-    df = pd.read_parquet(FUNDING_PARQUET)
+    df = pd.read_parquet(funding_parquet)
     df = df.sort_values(["symbol", "fundingTime"])
     out: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for sym, g in df.groupby("symbol"):
         ts = _to_utc_ns(g["fundingTime"])
         rate = g["fundingRate"].to_numpy(dtype=np.float64)
         out[sym] = (ts, rate)
-    print(f"[funding] loaded {len(out)} symbols, {len(df):,} events from {FUNDING_PARQUET.name}")
+    print(f"[funding] loaded {len(out)} symbols, {len(df):,} events from {funding_parquet.name}")
     return out
 
 
 def _anchor_4h_utc_stride(df: pd.DataFrame, stride_bars: int = STRIDE_BARS) -> pd.DataFrame:
-    """Stride 5m bars so every retained row lies on a 4h UTC boundary.
-
-    See scripts/binance/build_npy_phase3_tierA.py for full rationale. Raw
-    ``df.iloc[::stride_bars]`` is per-symbol-listing-phase which fragments
-    the cross-section; anchoring on 4h UTC unifies all symbols.
-    """
-    ot = pd.DatetimeIndex(df["open_time"])
-    if ot.tz is None:
-        ot = ot.tz_localize("UTC")
-    else:
-        ot = ot.tz_convert("UTC")
-    on_boundary = np.asarray(
-        (ot.minute == 0) & (ot.second == 0) & (ot.nanosecond == 0) & (ot.hour % 4 == 0)
-    )
-    if not on_boundary.any():
-        return df.iloc[0:0].reset_index(drop=True)
-    first_idx = int(np.argmax(on_boundary))
-    return df.iloc[first_idx::stride_bars].reset_index(drop=True)
+    """Keep observations exactly on the UTC grid even when five-minute bars are missing."""
+    timestamps = pd.to_datetime(df["open_time"], utc=True)
+    interval = pd.Timedelta(minutes=5 * stride_bars)
+    return df.loc[timestamps == timestamps.dt.floor(interval)].reset_index(drop=True)
 
 
-def _load_all(limit: int | None, fund_by_sym: dict) -> dict[str, pd.DataFrame]:
-    parts = sorted(FEAT_DIR.glob("*.parquet"))
+def _load_all(feature_dir: Path, limit: int | None, fund_by_sym: dict) -> dict[str, pd.DataFrame]:
+    parts = sorted(feature_dir.glob("*.parquet"))
     if limit:
         parts = parts[:limit]
     out: dict[str, pd.DataFrame] = {}
@@ -132,21 +117,23 @@ def _load_all(limit: int | None, fund_by_sym: dict) -> dict[str, pd.DataFrame]:
     return out
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--test-end", type=str, default=None,
                    help="Override test_end (e.g. '2025-09-30'). Default: max(features).")
     p.add_argument("--out-dir", type=str, default=None,
                    help="Override output dir. Default: data/binance/npy_phase2.")
-    args = p.parse_args()
+    p.add_argument("--source-dir", type=Path, default=DATA_ROOT,
+                   help="Directory containing features_5m/ and optional funding_rate.parquet.")
+    args = p.parse_args(argv)
 
     OUT_DIR = Path(args.out_dir) if args.out_dir else DEFAULT_OUT_DIR
 
     t0 = time.time()
     print(f"[load] features_5m + stride {STRIDE_BARS} ({STRIDE_BARS*5}min)", flush=True)
-    fund_by_sym = _load_funding_by_symbol()
-    panels = _load_all(args.limit, fund_by_sym)
+    fund_by_sym = _load_funding_by_symbol(args.source_dir / "funding_rate.parquet")
+    panels = _load_all(args.source_dir / "features_5m", args.limit, fund_by_sym)
     print(f"  symbols: {len(panels)}", flush=True)
     assert panels, "no symbols loaded"
 
