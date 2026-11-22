@@ -13,7 +13,7 @@ class ClaudeCLIClient:
     """
 
     def __init__(self, config: dict, **kwargs):
-        self.model = config.get("model", "claude-sonnet-4-20250514")
+        self.model = config.get("model", "sonnet")
         self.max_tokens = config.get("max_tokens", 4096)
 
     def create(self, params: dict) -> SimpleNamespace:
@@ -46,6 +46,7 @@ class ClaudeCLIClient:
             result = subprocess.run(
                 [
                     "claude",
+                    "--model", self.model,
                     "-p", prompt,
                     "--output-format", "text",
                 ],

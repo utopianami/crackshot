@@ -1,11 +1,7 @@
 """Training script with OmegaConf configuration.
 
 Usage:
-    # Config file + overrides
-    PYTHONPATH="." uv run python scripts/train.py -c configs/tab_m.yaml tab_m.npy_dir=/path
-
-    # Overrides only (uses dataclass defaults)
-    PYTHONPATH="." uv run python scripts/train.py model.name=tab_m tab_m.npy_dir=/path tab_m.d_block=256
+    uv run python -m scripts.train -c configs/tab_m_binance_phase1.yaml data.data_path=/path/to/npy
 
 Determinism:
     GPU parallel reduction is non-deterministic by default in XLA/JAX, which
@@ -33,6 +29,7 @@ import numpy as np
 from omegaconf import OmegaConf
 from pathlib import Path
 
+from scripts.evaluate_topk import compute_score, topk_stats
 from src.config import load_config
 from src.evaluation.metrics import calculate_metrics
 from src.training.registry import (
@@ -46,16 +43,13 @@ log = logging.getLogger(__name__)
 
 def _log_eval_cls(probs, actual, prefix=""):
     """Log evaluation for classification models (probs [N,5], actual [N] raw returns)."""
-    try:
-        from scripts.evaluate_topk import compute_score, topk_stats
-    except ImportError:
-        log.warning(f"{prefix}evaluate_topk not found, skipping topk eval")
-        return
     score = compute_score(probs)
     # Filter vol==0 and c2c_120==0
     mask = actual != 0
     score_f, actual_f = score[mask], actual[mask]
     log.info(f"=== {prefix}Classification Eval (N={len(actual_f):,}, filtered {(~mask).sum():,} zero-label rows) ===")
+    if not len(actual_f):
+        return
     for k in [0.1, 0.5, 1, 5]:
         stats = topk_stats(score_f, actual_f, k)
         log.info(
@@ -130,7 +124,7 @@ def main():
     # Resolve npy_dir from data config
     npy_dir = cfg.data.data_path
     if not npy_dir:
-        raise ValueError("data.data_path must be set. Run convert_kospi_npy.py first.")
+        raise ValueError("Set data.data_path to the experiment NPY directory.")
 
     # Timestamp suffix for unique output paths (used for both model save and predictions)
     # Include microseconds + PID so parallel launches within the same second don't collide.

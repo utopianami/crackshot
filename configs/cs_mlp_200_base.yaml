@@ -2,7 +2,7 @@ model:
   name: cs_mlp
 
 data:
-  data_path: "/shared/vendor_kospi/npy/260401_200_base/"
+  data_path: "data/kospi/260401_200_base/"
   sample_ratio: 0.05
 
 dataset:

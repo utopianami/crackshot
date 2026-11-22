@@ -7,7 +7,7 @@ long/short soft top-k head with ε=ε_end, computes per-bar portfolio return
 Usage:
   PYTHONPATH=. uv run python scripts/binance/backtest_portfolio.py \
       --model-dir outputs/models/cs_mlp_portfolio_20260420_181238 \
-      --data-dir BRAIN/binance/data/npy_phase2 \
+      --data-dir data/binance/npy_phase2 \
       --split test \
       --fee-per-side 0.0005
 """

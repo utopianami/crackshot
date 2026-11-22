@@ -24,8 +24,8 @@ from src.features.binance_funding_clock import funding_clock_features
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FEAT_DIR = REPO_ROOT / "BRAIN" / "binance" / "data" / "features_5m"
-DEFAULT_OUT_DIR = REPO_ROOT / "BRAIN" / "binance" / "data" / "npy_phase2"
+FEAT_DIR = REPO_ROOT / "data" / "binance" / "features_5m"
+DEFAULT_OUT_DIR = REPO_ROOT / "data" / "binance" / "npy_phase2"
 
 FEATURES_BASE = [
     "rv_4h", "amihud_4h",
@@ -37,7 +37,7 @@ FEATURES_CLOCK = ["mins_to_next_funding", "fund_phase_sin", "fund_phase_cos"]
 FEATURES = FEATURES_BASE + FEATURES_CLOCK
 LABELS = ["fwd_res_1h", "fwd_res_4h", "fwd_res_24h", "beta", "vol_dummy", "fwd_funding_4h"]
 FUNDING_FWD_HORIZON_HOURS = 4.0
-FUNDING_PARQUET = REPO_ROOT / "BRAIN" / "binance" / "data" / "funding_rate.parquet"
+FUNDING_PARQUET = REPO_ROOT / "data" / "binance" / "funding_rate.parquet"
 PARQUET_COLS = ["open_time", "symbol"] + FEATURES_BASE + [
     "fwd_res_1h", "fwd_res_4h", "fwd_res_24h", "beta",
 ]
@@ -138,7 +138,7 @@ def main() -> int:
     p.add_argument("--test-end", type=str, default=None,
                    help="Override test_end (e.g. '2025-09-30'). Default: max(features).")
     p.add_argument("--out-dir", type=str, default=None,
-                   help="Override output dir. Default: BRAIN/binance/data/npy_phase2.")
+                   help="Override output dir. Default: data/binance/npy_phase2.")
     args = p.parse_args()
 
     OUT_DIR = Path(args.out_dir) if args.out_dir else DEFAULT_OUT_DIR

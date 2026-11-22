@@ -2,7 +2,7 @@
 """AlphaSquad: multi-agent research meeting system.
 
 Usage:
-    # Build knowledge (deep research, stored in Mem0)
+    # Build knowledge (deep research, stored in ChromaDB)
     PYTHONPATH="." uv run python alpha_squad/run.py study "tabular deep learning for finance 2025"
     PYTHONPATH="." uv run python alpha_squad/run.py study "ranking loss functions"
 
@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def cmd_study(args):
-    """Deep research on a topic — builds knowledge in Mem0."""
+    """Deep research on a topic — builds knowledge in ChromaDB."""
     from alpha_squad.memory.store import AlphaSquadMemory
     from alpha_squad.research.knowledge import build_knowledge
 
@@ -31,7 +31,7 @@ def cmd_study(args):
     try:
         memory = AlphaSquadMemory()
     except Exception as e:
-        print(f"[WARN] Mem0 init failed ({e}), research will not be persisted")
+        print(f"[WARN] ChromaDB init failed ({e}), research will not be persisted")
         memory = None
 
     results = build_knowledge(args.topic, memory=memory)
@@ -44,7 +44,7 @@ def cmd_study(args):
         print(f"\n[{agent}] {preview}...")
 
     if memory:
-        print("\nAll findings stored in Mem0. Will be recalled in future meetings.")
+        print("\nAll findings stored in ChromaDB. Will be recalled in future meetings.")
 
 
 def cmd_meet(args):
@@ -108,7 +108,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Command")
 
     # study
-    p_study = subparsers.add_parser("study", help="Deep research on a topic (builds Mem0 knowledge)")
+    p_study = subparsers.add_parser("study", help="Deep research on a topic (builds ChromaDB knowledge)")
     p_study.add_argument("topic", help="Research topic")
 
     # meet
@@ -116,7 +116,7 @@ def main():
     p_meet.add_argument("topic", help="Meeting agenda")
     p_meet.add_argument("--rounds", type=int, default=2, help="Discussion rounds (default: 2)")
     p_meet.add_argument("--context-file", type=str, help="Extra context file")
-    p_meet.add_argument("--no-memory", action="store_true", help="Disable Mem0")
+    p_meet.add_argument("--no-memory", action="store_true", help="Disable ChromaDB")
     p_meet.add_argument("--skip-research", action="store_true", help="Skip Researcher2 new paper search, reuse latest cached context")
     p_meet.add_argument("--model", type=str, default=None, help="Override LLM model")
     p_meet.add_argument("--pm-model", type=str, default=None, help="Override PM model")

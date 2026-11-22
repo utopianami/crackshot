@@ -2,7 +2,7 @@ model:
   name: cs_mlp
 
 data:
-  data_path: "BRAIN/binance/data/npy_phase1/"
+  data_path: "data/binance/npy_phase1/"
   sample_ratio: 1.0
 
 dataset:

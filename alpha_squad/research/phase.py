@@ -2,9 +2,12 @@
 
 import json
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+
+from alpha_squad.config import latest_research_note
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CACHE_DIR = PROJECT_ROOT / "alpha_squad" / "research_cache"
@@ -41,7 +44,7 @@ def _run_python(code: str, timeout: int = 60) -> str:
     """Run a Python snippet and return stdout."""
     try:
         result = subprocess.run(
-            ["uv", "run", "python3", "-c", code],
+            [sys.executable, "-c", code],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -85,9 +88,8 @@ def _static_feature_analysis() -> str:
 import numpy as np
 from pathlib import Path
 
-npy_dir = Path("/shared/kospi_vendor_data/npy/260320_105feat")
-if not npy_dir.exists():
-    npy_dir = Path("/shared/kospi_data/npy/260306")
+import os
+npy_dir = Path(os.environ.get("KOSPI_NPY_DIR", "data/kospi/260401_200_base"))
 
 X_path = npy_dir / "X_train.npy"
 if X_path.exists():
@@ -138,9 +140,8 @@ def _static_label_analysis() -> str:
 import numpy as np
 from pathlib import Path
 
-npy_dir = Path("/shared/kospi_vendor_data/npy/260320_105feat")
-if not npy_dir.exists():
-    npy_dir = Path("/shared/kospi_data/npy/260306")
+import os
+npy_dir = Path(os.environ.get("KOSPI_NPY_DIR", "data/kospi/260401_200_base"))
 
 y_path = npy_dir / "y_train.npy"
 if y_path.exists():
@@ -178,18 +179,13 @@ def _static_loss_implementations() -> str:
 
 def _static_experiment_results() -> str:
     """Researcher1: current experiment results."""
-    return _read_file("BRAIN/kospi/experiments/results_all.tsv", max_chars=4000)
+    return _read_file("autoresearch/records/kospi-results.csv", max_chars=4000)
 
 
 def _static_latest_research() -> str:
     """Researcher1: latest autoresearch file."""
-    ar_dir = PROJECT_ROOT / "BRAIN" / "kospi" / "autoresearch"
-    if not ar_dir.exists():
-        return ""
-    files = sorted(ar_dir.glob("*.md"), reverse=True)
-    if not files:
-        return ""
-    return files[0].read_text(encoding="utf-8")[:3000]
+    note = latest_research_note(PROJECT_ROOT)
+    return note.read_text(encoding="utf-8")[:3000] if note else ""
 
 
 def _static_codebase_structure() -> str:
@@ -206,7 +202,7 @@ def _static_codebase_structure() -> str:
 
     data_code = """
 from pathlib import Path
-for base in ["/shared/kospi_vendor_data/npy/", "/shared/kospi_data/npy/", "/shared/kospi_data/kospi_200/npy/"]:
+for base in ["data/kospi/", "data/binance/"]:
     p = Path(base)
     if p.exists():
         print(f"\\n{base}:")
@@ -229,19 +225,19 @@ for base in ["/shared/kospi_vendor_data/npy/", "/shared/kospi_data/npy/", "/shar
 
 def _static_model_config() -> str:
     """Researcher1: current best model config."""
-    return _read_file("configs/tab_m.yaml", max_chars=2000)
+    return _read_file("configs/cs_mlp_200_base.yaml", max_chars=2000)
 
 
 def _static_feature_docs() -> str:
     """Expert1: feature documentation."""
-    data_md = _read_file("BRAIN/kospi/data.md", max_chars=2000)
-    feat_md = _read_file("BRAIN/kospi/data_feature_extraction.md", max_chars=2000)
+    data_md = _read_file("research/kospi.md", max_chars=2000)
+    feat_md = _read_file("research/binance.md", max_chars=2000)
     return f"{data_md}\n\n{feat_md}"
 
 
 def _static_constraints() -> str:
     """PM: project constraints."""
-    return _read_file("BRAIN/kospi/program.md", max_chars=2000)
+    return _read_file("autoresearch/README.md", max_chars=2000)
 
 
 def run_static_research(force: bool = False) -> dict:

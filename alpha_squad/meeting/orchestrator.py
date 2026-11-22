@@ -14,7 +14,7 @@ from alpha_squad.agents import (
     create_researcher2,
     create_researcher3,
 )
-from alpha_squad.config import AlphaSquadConfig
+from alpha_squad.config import AlphaSquadConfig, latest_research_note
 from alpha_squad.llm import ClaudeCLIClient
 from alpha_squad.memory.store import AlphaSquadMemory
 from alpha_squad.knowledge.lightrag_backend import AlphaSquadKnowledge
@@ -90,13 +90,9 @@ def _load_context(config: AlphaSquadConfig) -> str:
 
 def _load_latest_research(config: AlphaSquadConfig) -> str:
     """Load the latest autoresearch file for context."""
-    research_dir = config.brain_dir / "autoresearch"
-    if not research_dir.exists():
+    latest = latest_research_note(config.project_root)
+    if latest is None:
         return ""
-    files = sorted(research_dir.glob("*.md"), reverse=True)
-    if not files:
-        return ""
-    latest = files[0]
     return f"--- 최신 실험 기록: {latest.name} ---\n{latest.read_text()[:4000]}"
 
 

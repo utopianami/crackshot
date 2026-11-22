@@ -83,24 +83,9 @@ def _load_project_context() -> str:
     """Load actual project code structure + autoresearch documents."""
     parts = []
 
-    # 1. Autoresearch documents (all of them)
-    ar_dir = PROJECT_ROOT / "BRAIN" / "kospi" / "autoresearch"
-    if ar_dir.exists():
-        for f in sorted(ar_dir.glob("*.md")):
-            content = f.read_text(encoding="utf-8", errors="replace")
-            parts.append(f"--- {f.name} ---\n{content[:2000]}")
-
-    # 2. Key BRAIN docs
-    for doc in ["autoresearch_common.md", "data.md", "program.md",
-                "data_feature_extraction.md", "feature_analysis.md", "literature_survey.md"]:
-        path = PROJECT_ROOT / "BRAIN" / "kospi" / doc
-        if path.exists():
-            parts.append(f"--- {doc} ---\n{path.read_text(encoding='utf-8', errors='replace')[:2000]}")
-
-    # 3. Experiment results
-    results_path = PROJECT_ROOT / "BRAIN" / "kospi" / "experiments" / "results_all.tsv"
-    if results_path.exists():
-        parts.append(f"--- results_all.tsv ---\n{results_path.read_text()[:3000]}")
+    for path in sorted((PROJECT_ROOT / "research").rglob("*.md")):
+        content = path.read_text(encoding="utf-8")
+        parts.append(f"--- {path.name} ---\n{content[:2000]}")
 
     # 4. Model architectures (list + key files)
     arch_dir = PROJECT_ROOT / "src" / "models" / "architectures"

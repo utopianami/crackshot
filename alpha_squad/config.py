@@ -4,11 +4,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def latest_research_note(project_root: Path) -> Path | None:
+    """Prefer new dated session notes, falling back to the archived research log."""
+    research = project_root / "autoresearch"
+    runs = sorted((research / "runs").glob("????-??-??*.md"))
+    if runs:
+        return runs[-1]
+    archived = research / "records" / "binance-2026-04-28.md"
+    return archived if archived.is_file() else None
+
+
 @dataclass
 class AlphaSquadConfig:
     # LLM
-    model: str = "claude-sonnet-4-20250514"
-    pm_model: str = "claude-opus-4-20250514"  # PM gets stronger model
+    model: str = "sonnet"
+    pm_model: str = "opus"  # PM gets stronger model
     temperature: float = 0.7
     max_tokens: int = 4096
 
@@ -18,15 +28,14 @@ class AlphaSquadConfig:
 
     # Paths
     project_root: Path = field(default_factory=lambda: Path(__file__).parent.parent)
-    brain_dir: Path = field(default_factory=lambda: Path(__file__).parent.parent / "BRAIN" / "kospi")
     output_dir: Path = field(default_factory=lambda: Path(__file__).parent / "meetings")
     memory_dir: Path = field(default_factory=lambda: Path(__file__).parent / "memory_store")
 
     # Context files to load for meetings
     context_files: list[str] = field(default_factory=lambda: [
-        "BRAIN/kospi/autoresearch_common.md",
-        "BRAIN/kospi/data.md",
-        "BRAIN/kospi/program.md",
+        "autoresearch/README.md",
+        "research/binance.md",
+        "research/kospi.md",
     ])
 
     def __post_init__(self):
