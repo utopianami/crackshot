@@ -2,14 +2,6 @@
 
 A research environment I built to study cross-sectional return prediction in the KOSPI and Binance markets. It connects research meetings, interchangeable JAX models, and a written record of what each experiment changed.
 
-## How I run experiments
-
-| Part | What I built | Guide |
-| --- | --- | --- |
-| **JAX experiment framework** | Trainers register their architectures and defaults. Selecting a different model in YAML reuses the training entry point and dataset split. | [Swap TabM and FT-Transformer](research/jax.md) |
-| **Alpha Squad** | I set a meeting question and supply the previous result. Five agent roles review the literature, challenge the proposal, and specify a comparison I can run. | [Follow an agenda through to an experiment](alpha_squad/README.md) |
-| **AutoResearch** | Each iteration records the hypothesis, baseline, fixed conditions, measurements, and decision. The next research session reads that record before choosing what to change. | [Read the protocol and session logs](autoresearch/README.md) |
-
 ## The research question
 
 At each point in time, rank a universe of assets by expected short-horizon return. Does that ranking still earn money after trading costs?
@@ -20,6 +12,24 @@ The question was studied in two markets:
 - **Binance USDT-M perpetual futures:** build a long/short portfolio across about 300 assets, rebalanced every four hours, on returns with the BTC market direction removed.
 
 The domain is finance, but the difficulties are general ones for applied prediction research: the signal is weak, most ideas fail, and a result can change with the random seed or with the evaluation settings. So the project is built around the research process. A model is one replaceable part of it.
+
+## How I run experiments
+
+Three parts keep that process moving. Alpha Squad decides what to test next, AutoResearch fixes the hypothesis and conditions and records the outcome, and the JAX framework runs the comparison.
+
+| Part | What I built | Guide |
+| --- | --- | --- |
+| **JAX experiment framework** | Trainers register their architectures and defaults. Selecting a different model in YAML reuses the training entry point and dataset split. | [Swap TabM and FT-Transformer](research/jax.md) |
+| **Alpha Squad** | I set a meeting question and supply the previous result. Five agent roles review the literature, challenge the proposal, and specify a comparison I can run. | [Follow an agenda through to an experiment](alpha_squad/README.md) |
+| **AutoResearch** | Each iteration records the hypothesis, baseline, fixed conditions, measurements, and decision. The next research session reads that record before choosing what to change. | [Read the protocol and session logs](autoresearch/README.md) |
+
+```
+Alpha Squad            AutoResearch                 JAX framework
+(what to test next) -> (hypothesis, baseline,    -> (swap model or input,
+        ^               fixed conditions)            train, evaluate)
+        |                                                  |
+        +------ verdict and reasons, written to files <----+
+```
 
 ## How one research question was worked through
 
