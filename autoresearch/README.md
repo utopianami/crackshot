@@ -1,29 +1,37 @@
-# AutoResearch · 한 번의 결과를 다음 실험의 입력으로 쓰기
+# AutoResearch: using one result as the input to the next experiment
 
-AutoResearch는 코딩 에이전트가 이전 실험에서 이어서 연구할 수 있도록 만든 작업 방식입니다. 세션이 바뀌어도 다음 실험의 출발점을 찾을 수 있게 **실험 규칙, 회차별 일지, 누적 결과표**를 파일로 관리했습니다. KOSPI에서 쓴 원래 지침에는 이전 기준선부터 재현하고 계획과 실제 config를 대조한 뒤 학습·평가하도록 순서가 정해져 있습니다. [당시 실행 지침](records/kospi-protocol.md)
+AutoResearch is the working method I set up so that a coding agent can continue research from where the previous experiment stopped. An agent session has no memory of the last one, so everything the next iteration needs is kept in files: **the experiment rules, a log per iteration, and a cumulative results table.** In the original project this workspace was a folder named `BRAIN`, which the agent read at the start of every session.
 
-## 한 회차를 시작하는 방법
+| File | Role |
+| --- | --- |
+| Protocol | The rules of the loop: what to read first, the order of steps, how to judge a result. [Original KOSPI protocol](records/kospi-protocol.md) |
+| Iteration log | One dated file per session: observation, hypothesis, fixed conditions, result, reasoning, next question. [Example](records/binance-2026-04-28.md) |
+| Results table | One row per experiment: date, dataset, model, trade count, performance, verdict, reason. [KOSPI table](records/kospi-results.csv) |
 
-| 순서 | 할 일 | 남길 근거 |
+The original KOSPI protocol fixes the order: reproduce the previous best first (to tell a pipeline problem from a model problem), compare the plan against the actual config, then train and evaluate. It also requires every planned experiment to be run to a conclusion and recorded, including the ones that fail, and keeps a list of failed approaches and mistakes that must not be repeated.
+
+## How one iteration runs
+
+| Step | What to do | Evidence to leave |
 | --- | --- | --- |
-| 1. 질문 선택 | Alpha Squad의 제안이나 직전 일지에서 검증할 가설 하나를 고릅니다. | 안건, 가설, 어떤 결과면 기각할지 |
-| 2. 비교 설계 | 기준선의 데이터 기간·시드·비용·평가지표를 정하고 이번에 바꿀 조건을 표시합니다. | 기준선 설정과 변경 설정, 정확한 실행 명령 |
-| 3. 구현·실행 | JAX 트레이너와 설정을 선택하고 실제 실행값을 계획과 대조합니다. | 실행 이름, 산출물 경로, 평가 구간 |
-| 4. 판정 | 측정한 수치를 결과표에 한 줄 추가하고, 일지에는 해석과 한계를 씁니다. | `keep` 채택, `discard` 기각, `crash` 실행 실패 |
-| 5. 다음 질문 | 예상과 어긋난 결과 또는 아직 통제하지 못한 변수를 다음 회차에 넘깁니다. | 후속 가설과 이전 회차 링크 |
+| 1. Pick the question | Choose one hypothesis to test, from an Alpha Squad proposal or the previous log. | Agenda, hypothesis, and what result would reject it |
+| 2. Design the comparison | Fix the baseline's data period, seeds, costs, and metrics, and mark the one condition that changes. | Baseline config, changed config, exact run commands |
+| 3. Implement and run | Select the JAX trainer and config, and compare the actual run values against the plan. | Run name, output path, evaluation period |
+| 4. Judge | Add one row of measured numbers to the results table; write the interpretation and limits in the log. | `keep` (adopt), `discard` (reject), `crash` (run failed) |
+| 5. Next question | Pass on any result that contradicted expectations, or any variable not yet controlled. | Follow-up hypothesis and a link to this iteration |
 
-새 회차 일지는 `autoresearch/runs/YYYY-MM-DD-주제.md`에 남깁니다. Alpha Squad는 다음 회의를 열 때 가장 최근 일지를 함께 읽습니다. [세션 시작 설정](../CLAUDE.md) · [회의 컨텍스트 로더](../alpha_squad/config.py)
+New iteration logs go in `autoresearch/runs/YYYY-MM-DD-topic.md`. When Alpha Squad opens its next meeting, it reads the most recent log as context. [Session start instructions](../CLAUDE.md) · [Meeting context loader](../alpha_squad/config.py)
 
-예를 들어 새로운 연구 세션에 다음과 같이 지시할 수 있습니다.
+A new research session can be started with an instruction like this:
 
-> 직전 회차에서 두 모델의 예측 상관이 높았다. 단순 평균을 기준선으로 두고, 점수 표준화 후 가중평균이 세 평가 구간에서 최대 낙폭을 줄이는지 검증하라. 데이터 구간·비용·시드를 고정하고, 결과표와 일지에 채택 또는 기각 근거를 기록하라.
+> In the previous iteration the predictions of the two models were highly correlated. With the simple average as the baseline, test whether a weighted average after score standardization reduces maximum drawdown across the three evaluation periods. Keep the data period, costs, and seeds fixed, and record the grounds for adopting or rejecting it in the results table and the log.
 
-## 실제로 가설이 바뀐 사례
+## A case where the hypothesis changed
 
-4월 28일 Binance 연구에서는 모델 조합에 따라 예측 상관이 달라지는 것을 관찰했습니다. 표준화와 가중치를 적용하면 분산 효과를 살릴 수 있다고 가정하고 10가지 조합을 비교했습니다. 기록상 가중 조합은 단순 평균보다 최대 낙폭이 컸습니다. 다음 회차에서는 3개 시드에서 앞선 모델이 5개 시드에서도 같은 순위를 유지하는지 시험했습니다. [관찰·가설·판정이 남은 회차별 원문](records/binance-2026-04-28.md)
+In the April 28 Binance research, the correlation between predictions was observed to vary by model combination. The hypothesis was that standardization and weighting would capture a diversification benefit, and ten combinations were compared. According to the record, the weighted combinations had a larger maximum drawdown than the simple average. The next iteration tested whether the model that led with three seeds kept the same rank with five. [Original log with observation, hypothesis, and verdict per cycle](records/binance-2026-04-28.md)
 
-KOSPI에서는 날짜·데이터셋·모델·거래 수·성과·판정·이유를 한 행에 모았습니다. 4월 2일 기록에는 세 모델을 기각하고 기본 피처의 CS-MLP를 후속 실험에 남긴 판단이 함께 있습니다. [당시 결과표](records/kospi-results.csv)
+For KOSPI, each row of the table holds the date, dataset, model, trade count, performance, verdict, and reason. The April 2 rows include the decision to reject three models and carry the base-feature CS-MLP into follow-up experiments. [Results table](records/kospi-results.csv)
 
-## 재현 범위
+## What can be reproduced here
 
-원본 지침과 일지에는 당시 연구 서버의 경로와 별도 백테스트 엔진이 등장합니다. 제출본에서 바로 재현할 수 있는 범위는 합성 데이터 학습과 테스트입니다. 실제 시세로 회차를 반복하려면 데이터 구간과 평가 환경을 준비하고 위 순서에 따라 실행합니다. [학습 명령과 데모](../research/jax.md)
+The original protocol and logs refer to the research server's paths and to a separate backtest engine. What runs directly from this repository is training on synthetic data and the tests. Repeating an iteration on real market data requires preparing the data period and the evaluation environment, then following the steps above. [Training commands and demo](../research/jax.md)

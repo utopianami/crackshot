@@ -1,5 +1,7 @@
 # Phase 2-R 실험 로그 — Differentiable Portfolio Loss
 
+> **English note.** Original experiment log, kept in Korean as written. Phase 2-R on Binance: replacing the classification objective with a differentiable portfolio loss, the first config whose scores collapsed to a constant, the follow-up configs, and per-seed results. English summary: [Binance write-up](../binance.md).
+
 ## 컨텍스트
 
 Phase 1 분류형 baseline(FT-T / TabM / CS-MLP) 이후 알파스쿼드 회의(2026-04-20 17:12)가 추천한 Phase 0-R → 1-R → 2-R 로드맵 중, 사용자가 "가능성 확인" 목적으로 Phase 2-R을 Compromise A (기존 NPY 유지 + 회의 핵심 교훈 반영) 로 바로 진행하기로 결정.

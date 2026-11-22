@@ -1,32 +1,32 @@
-# Binance · 학습 목표를 포트폴리오 수익으로 바꾸면 어떻게 될까?
+# Binance: what happens when the training objective becomes portfolio return?
 
-## 출발점
+## Starting point
 
-분류 모델 세 종류로 상승·하락을 예측하고 종목을 골랐을 때, 회의에 제출한 기준선은 편도 5bp 비용 가정에서 모두 음의 롱숏 Sharpe를 기록했습니다. 예측 순위와 거래 후 성과 사이의 간극을 줄이기 위해, 모델이 종목별 점수를 내면 그 점수로 롱숏 비중을 만들고 잔차수익률로 직접 학습하는 실험을 설계했습니다. [기준선과 회의 안건](../alpha_squad/meetings/meeting_20260420_171228.md)
+When three kinds of classification models predicted up/down moves and picked assets, the baselines brought to the meeting all showed negative long/short Sharpe under a 5 bp one-way cost assumption. To narrow the gap between prediction ranking and after-trade performance, I designed an experiment in which the model outputs a score per asset, the scores are turned into long/short weights, and training is done directly on residual returns. [Baselines and meeting agenda](../alpha_squad/meetings/meeting_20260420_171228.md)
 
-## 설계와 첫 실패
+## Design and the first failure
 
-4시간마다 298개 종목을 비교했습니다. BTC에 대한 베타로 시장 방향 노출을 조정하고, 미분 가능한 top-k 연산으로 롱·숏 각 10개에 해당하는 비중을 만들었습니다. 첫 설정은 베타 노출과 회전율에 페널티를 줬습니다. 검증 손실은 0에 수렴했지만, 저장한 모델의 종목별 점수 표준편차도 0이었습니다. 모든 종목에 동일한 점수를 주면 롱과 숏이 서로 상쇄되므로 손실과 포지션을 함께 봐야 했습니다. [첫 설정](../configs/cs_mlp_portfolio_binance.yaml) · [종목 선택 구현](../src/training/heads/long_short_topk.py) · [손실 구현](../src/training/losses/portfolio.py)
+298 assets were compared every four hours. Market-direction exposure was adjusted with each asset's beta to BTC, and a differentiable top-k operator produced weights corresponding to 10 longs and 10 shorts. The first config penalized beta exposure and turnover. Validation loss converged to zero, but the standard deviation of per-asset scores in the saved model was also zero. If every asset gets the same score, longs and shorts cancel out, so the loss and the positions have to be read together. [First config](../configs/cs_mlp_portfolio_binance.yaml) · [Asset selection](../src/training/heads/long_short_topk.py) · [Loss](../src/training/losses/portfolio.py)
 
-| 측정 | 첫 설정 | 후속 설정 |
+| Measure | First config | Follow-up config |
 | --- | ---: | ---: |
-| 종목별 점수의 표준편차 | 0.0 | 4.44 |
-| 검증 구간 Pearson 상관 | 0.011 | 0.0214 |
-| 테스트 구간 Pearson 상관 | 상수 예측으로 정의되지 않음 | 0.0164 |
+| Std of per-asset scores | 0.0 | 4.44 |
+| Pearson correlation, validation | 0.011 | 0.0214 |
+| Pearson correlation, test | Undefined (constant prediction) | 0.0164 |
 
-후속 설정에서는 베타·회전율 페널티와 weight decay를 0으로 두고, 피처 표준화와 드롭아웃 등도 함께 바꿨습니다. 점수가 종목을 다시 구분한다는 것은 확인했습니다. 이 비교만으로 어떤 변경이 회복을 일으켰는지는 식별할 수 없습니다. [후속 설정](../configs/cs_mlp_portfolio_binance_v2.yaml) · [당시 실험 기록](records/binance-portfolio.md)
+The follow-up config set the beta and turnover penalties and weight decay to zero, and also changed feature standardization, dropout, and other settings. It confirmed that the scores separate assets again. This comparison alone cannot identify which change caused the recovery. [Follow-up config](../configs/cs_mlp_portfolio_binance_v2.yaml) · [Experiment record](records/binance-portfolio.md)
 
-## 앙상블을 써도 해결되지 않은 구간
+## A period that ensembling did not fix
 
-후속 v7 모델을 2025년 3월 1일–4월 30일(W2)에 평가했습니다. 세 학습 시드의 포지션을 합쳐도 회전율이 높았고 비용 차감 후 Sharpe가 음수였습니다.
+The later v7 model was evaluated on March 1 to April 30, 2025 (W2). Even after combining the positions of three training seeds, turnover was high and the Sharpe after costs was negative.
 
-| W2 평가 | 시드 42 | 시드 123 | 시드 2026 | 세 시드 앙상블 |
+| W2 evaluation | Seed 42 | Seed 123 | Seed 2026 | Three-seed ensemble |
 | --- | ---: | ---: | ---: | ---: |
-| 테스트 순 Sharpe | 0.04 | −0.06 | −1.12 | −0.32 |
-| 회전율 (실험 기록 단위) | 35.2 | 35.3 | 33.3 | 34.0 |
+| Test net Sharpe | 0.04 | −0.06 | −1.12 | −0.32 |
+| Turnover (units as recorded) | 35.2 | 35.3 | 33.3 | 34.0 |
 
-이 구간에서는 시드 선택만 바꿔 공통된 거래 패턴을 상쇄하기 어려웠습니다. 한 구간의 세 시드로 다른 시기의 실패 확률까지 추정하기는 어렵습니다. 수치는 당시 잔차수익률과 비용 모형을 사용한 백테스트 결과이며, 실제 체결·펀딩 현금흐름까지 확인하려면 별도 데이터가 필요합니다. [W2 설정](../configs/cs_mlp_portfolio_binance_v7_w2.yaml) · [시드별 측정 기록](records/binance-portfolio.md) · [백테스트 구현](../scripts/binance/backtest_portfolio.py)
+In this period, changing the seed was not enough to cancel a trading pattern the seeds had in common. Three seeds in one period are also not enough to estimate the failure probability in other periods. The numbers are backtest results using the residual returns and cost model of the time; confirming actual fills and funding cash flows would need separate data. [W2 config](../configs/cs_mlp_portfolio_binance_v7_w2.yaml) · [Per-seed measurements](records/binance-portfolio.md) · [Backtest](../scripts/binance/backtest_portfolio.py)
 
-## 검증 경로
+## How to verify
 
-`uv run --locked python -m pytest -q tests/binance`를 실행하면 외부 시세 없이 피처, 종목 선택, 손실, 학습 단계를 검사합니다. 당시의 학습 데이터가 있다면 `uv run --locked python -m scripts.train -c configs/cs_mlp_portfolio_binance_v2.yaml data.data_path=/path/to/npy`로 학습 진입점을 사용할 수 있습니다. [데이터 배열 구성](../scripts/binance/build_npy_phase2.py)
+`uv run --locked python -m pytest -q tests/binance` checks the features, asset selection, loss, and training step without external market data. With the training data of the time, the entry point can be run as `uv run --locked python -m scripts.train -c configs/cs_mlp_portfolio_binance_v2.yaml data.data_path=/path/to/npy`. [Array layout](../scripts/binance/build_npy_phase2.py)

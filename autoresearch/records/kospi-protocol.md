@@ -1,5 +1,7 @@
 # Autoresearch
 
+> **English note.** Original protocol, kept in Korean as written. These are the rules the coding agent followed for the KOSPI research: reference documents, session-start checklist, the experiment loop, and the rule that every planned experiment is run to a conclusion and recorded. File paths refer to the original `BRAIN` workspace, most of which is not included in this repository. English summary: [AutoResearch README](../README.md).
+
 ## 참조 문서
 
 | 문서 | 내용 |

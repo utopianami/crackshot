@@ -1,26 +1,53 @@
-# JAX 실험 구조
+# JAX experiment structure
 
-같은 데이터에서 모델만 바꾸려면 모델 구조, 학습 방법, 데이터셋에 관한 선택을 분리해야 합니다. 이 저장소에서는 Equinox가 순전파를, JAX와 Optax를 쓰는 트레이너가 학습을, OmegaConf 설정이 실험별 선택을 담당합니다.
+To change only the model on the same data, or only the data under the same model, three kinds of choices have to be kept apart: the model architecture, the training method, and the dataset. In this repository Equinox handles the forward pass, trainers built on JAX and Optax handle training, and OmegaConf configs hold the per-experiment choices.
 
-| 변경할 것 | 수정할 곳 | 예시 |
+| What you want to change | Where to change it | Example |
 | --- | --- | --- |
-| 피처를 확률로 바꾸는 방법 | 모델별 Equinox 모듈 | [TabM](../src/models/architectures/tab_m.py) · [FT-Transformer](../src/models/architectures/ft_transformer.py) |
-| 손실, 최적화, 추론 방법 | `BaseTrainer`를 구현하는 모델별 트레이너 | [TabM 학습](../src/training/trainers/tab_m.py) · [FT-Transformer 학습](../src/training/trainers/ft_transformer.py) |
-| 모델 기본값과 실험 조건 | 기본값은 dataclass, 실험별 변경은 YAML과 CLI | [TabM 기본값](../src/config/models/tab_m.py) · [실험 설정](../configs/tab_m_binance_phase1.yaml) |
+| How features become probabilities | The model's Equinox module | [TabM](../src/models/architectures/tab_m.py) · [FT-Transformer](../src/models/architectures/ft_transformer.py) |
+| Loss, optimization, inference | The model's trainer, which implements `BaseTrainer` | [TabM trainer](../src/training/trainers/tab_m.py) · [FT-Transformer trainer](../src/training/trainers/ft_transformer.py) |
+| Model defaults and experiment conditions | Defaults in a dataclass; per-experiment changes in YAML and on the CLI | [TabM defaults](../src/config/models/tab_m.py) · [Experiment config](../configs/tab_m_binance_phase1.yaml) |
+| Which data, horizons, and return buckets | The `data` and `dataset` blocks of the YAML | [KOSPI](../configs/cs_mlp_200_base.yaml) · [Binance](../configs/cs_mlp_binance_phase1.yaml) |
 
-## 새 모델을 연결하는 순서
+## Swapping the model
 
-1. `src/models/architectures/`에 순전파 모듈을 만듭니다. 학습·추론 과정에서 필요한 난수 키와 출력 형태를 정합니다.
-2. `src/config/models/`에 모델 설정을 정의합니다. `src/training/trainers/`에 `fit_from_npy`, `predict_npy`, `save`, `load`를 구현하고, `@register_trainer`에 모델 이름과 기본 설정을 전달합니다.
-3. YAML의 `model.name`에 등록 이름을 넣습니다. 실행 시 `discover_trainers()`가 모듈을 불러오고 `load_config()`가 모델의 기본값, YAML, CLI 변경값을 합칩니다. [공통 인터페이스와 자동 등록](../src/training/registry.py) · [설정 병합](../src/config/__init__.py)
+Steps to plug in a new model:
 
-## 같은 조건에서 교체하기
+1. Create the forward-pass module in `src/models/architectures/`. Decide the random keys it needs during training and inference, and its output shape.
+2. Define the model config in `src/config/models/`. In `src/training/trainers/`, implement `fit_from_npy`, `predict_npy`, `save`, and `load`, and pass the model name and default config to `@register_trainer`.
+3. Put the registered name in `model.name` in the YAML. At run time `discover_trainers()` imports the trainer modules and `load_config()` merges the model defaults, the YAML, and CLI overrides. [Common interface and auto-registration](../src/training/registry.py) · [Config merging](../src/config/__init__.py)
 
-아래 두 설정은 같은 분할, 수익률 구간, 평가 horizon을 사용합니다. 준비한 Phase 1 NPY 디렉터리를 지정하면 같은 학습 진입점으로 실행할 수 있습니다.
+No existing file needs to change: not the root config, not `__init__.py`, not the training script.
+
+The two configs below use the same split, return buckets, and evaluation horizon. Point them at a prepared Phase 1 NPY directory and they run through the same entry point.
 
 ```bash
 uv run --locked python -m scripts.train -c configs/tab_m_binance_phase1.yaml data.data_path=/path/to/npy
 uv run --locked python -m scripts.train -c configs/ft_transformer_binance_phase1.yaml data.data_path=/path/to/npy
 ```
 
-시세 데이터 없이 교체 과정을 확인하려면 `uv run --locked python -m examples.compare_trainers`를 실행합니다. 이 예제는 두 모델에 같은 합성 표본을 제공하고 학습 후 예측 형태와 확률 합계를 검사합니다. [실행 예제](../examples/compare_trainers.py) · [자동 등록과 설정 우선순위 테스트](../tests/strict/test_trainer_discovery.py)
+## Swapping the input
+
+Dataset-dependent values never appear in model or trainer code. They are read from two config blocks:
+
+- `data`: where the arrays are and how much to sample (`data_path`, `sample_ratio`, split dates, symbol filters).
+- `dataset`: how to read the labels (`horizon_indices` for which label columns are the prediction horizons, `primary_horizon`, `vol_idx`, and `class_bins` for the return-bucket edges).
+
+The same CS-MLP trainer was used on both markets by changing only these blocks:
+
+| | KOSPI ([config](../configs/cs_mlp_200_base.yaml)) | Binance ([config](../configs/cs_mlp_binance_phase1.yaml)) |
+| --- | --- | --- |
+| `data.data_path` | `data/kospi/260401_200_base/` | `data/binance/npy_phase1/` |
+| `dataset.horizon_indices` | `[4, 5, 6]` | `[0, 1, 2]` |
+| `dataset.class_bins` | `[-0.01, -0.003, 0.003, 0.01]` | `[-0.02, -0.005, 0.005, 0.02]` |
+| `model.name` | `cs_mlp` | `cs_mlp` |
+
+Any of these can also be overridden on the command line, as `data.data_path=...` is above. [Config schema](../src/config/common.py)
+
+## Checking the swap without market data
+
+```bash
+uv run --locked python -m examples.compare_trainers
+```
+
+This example feeds the same synthetic samples to two models and, after training, checks the prediction shape and that probabilities sum to one. [Example](../examples/compare_trainers.py) · [Tests for auto-registration and config precedence](../tests/strict/test_trainer_discovery.py)

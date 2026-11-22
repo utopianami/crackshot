@@ -1,24 +1,24 @@
-# KOSPI · 같은 설정으로 학습한 모델의 성과가 왜 흔들렸을까?
+# KOSPI: why did results vary between models trained with the same config?
 
-KOSPI 종목의 120분 후 수익률 구간을 예측하는 CS-MLP를 반복 학습하면서, 같은 설정에서 나온 백테스트 결과끼리도 차이가 큰 현상을 조사했습니다. 모델을 바꾸기 전에 예측 행이 누락되는지 확인하고, 같은 세 모델을 여러 평가 조건에 넣어 차이가 어디서 커지는지 측정했습니다. [학습 설정](../configs/cs_mlp_200_base.yaml) · [4월 8일 연구 일지](records/kospi-2026-04-08.md)
+While repeatedly training a CS-MLP that predicts the 120-minute-ahead return bucket for KOSPI stocks, backtest results differed widely even between runs of the same config. Before changing the model, I checked whether prediction rows were being dropped, then put the same three models through several evaluation conditions to measure where the difference grows. [Training config](../configs/cs_mlp_200_base.yaml) · [April 8 research log](records/kospi-2026-04-08.md)
 
-## 추론에서 행이 사라진 이유
+## Why rows disappeared at inference
 
-학습에서는 목표 수익률이 0인 행을 제외했습니다. 이 조건이 추론에도 적용되면서, 일부 행에 균등한 5개 클래스 확률이 채워졌습니다. 목표 수익률은 예측 시점에 알 수 없는 값입니다. 추론 경로에서는 목표값이 0인 행도 모델이 예측하도록 수정했고, 작은 합성 데이터에 해당 행을 넣어 동작을 확인합니다. [트레이너 구현](../src/training/trainers/cs_mlp.py) · [회귀 테스트](../tests/test_cs_mlp_inference_filter.py)
+Training excluded rows whose target return was zero. The same condition was also being applied at inference, so some rows were filled with uniform probabilities over the five classes. The target return is not known at prediction time. The inference path was changed so the model predicts rows with a zero target too, and a small synthetic dataset containing such rows now checks the behavior. [Trainer](../src/training/trainers/cs_mlp.py) · [Regression test](../tests/test_cs_mlp_inference_filter.py)
 
-## 같은 예측을 어떤 조건에서 평가할 것인가
+## Under which conditions should the same predictions be evaluated?
 
-데이터와 시드를 고정하고 GPU 결정성 옵션을 끈 상태에서 세 번 학습한 뒤, 각 모델을 동일한 여덟 가지 백테스트 조건에 넣었습니다. 아래는 2026년 4월 4일을 테스트 종료일로 둔 데이터에 대한 결과입니다. 단위는 원이며 표준편차는 세 번의 누적 알파 손익에 대해 계산했습니다.
+With data and seed fixed and the GPU determinism option off, the model was trained three times, and each model was run through the same eight backtest conditions. The results below are for data whose test period ends on April 4, 2026. Units are KRW; the standard deviation is over the cumulative alpha PnL of the three runs.
 
-| 조건 | 평가에 사용한 설정 | 평균 누적 알파 | 표준편차 (근사) |
+| Condition | Evaluation settings | Mean cumulative alpha | Std (approx.) |
 | --- | --- | ---: | ---: |
-| C6 | 종목 한도 250만 원, 가중 점수, 고정 슬리피지 | −4,898,851 | 30,000 |
-| OLD | 종목 한도 250만 원, 기본 점수, 고정 슬리피지 | −2,913,265 | 81,000 |
-| C5 | 종목 한도 750만 원, 기본 점수, IC 기반 주문 크기와 동적 슬리피지 | +5,036,017 | 304,000 |
-| NEW | C5와 같은 체결 조건, 가중 점수 | +133,932 | 807,000 |
+| C6 | Per-stock cap 2.5M KRW, weighted score, fixed slippage | −4,898,851 | 30,000 |
+| OLD | Per-stock cap 2.5M KRW, base score, fixed slippage | −2,913,265 | 81,000 |
+| C5 | Per-stock cap 7.5M KRW, base score, IC-based order sizing and dynamic slippage | +5,036,017 | 304,000 |
+| NEW | Same execution settings as C5, weighted score | +133,932 | 807,000 |
 
-C5와 NEW는 클래스 확률을 점수로 바꾸는 가중치만 다릅니다. NEW에서는 세 번 중 한 번의 누적 알파가 음수가 됐습니다. 이 조건에서 한 번의 양수 결과만 보고 모델 개선 여부를 판단하면, 점수 변환과 백테스트가 만든 차이까지 모델 성능으로 해석하게 됩니다. C6의 작은 표준편차도 손실이 일관됐다는 의미로 읽어야 합니다. [여덟 조건의 개별 결과와 비용 가정](records/kospi-sensitivity.md)
+C5 and NEW differ only in the weights that turn class probabilities into a score. Under NEW, one of the three runs had negative cumulative alpha. Judging model improvement from a single positive result under this condition would attribute to the model a difference that the score transform and the backtest created. The small standard deviation of C6 should likewise be read as a consistent loss. [Per-condition results for all eight conditions and cost assumptions](records/kospi-sensitivity.md)
 
-반복 횟수는 세 번입니다. 데이터 기간을 바꿔 네 번 재학습한 후속 비교에서는 조건별 표준편차의 순서도 달라졌습니다. 이 기록으로 내릴 수 있는 결론은 모델 비교 시 데이터 기간, 시드 선택 방식, 평가 조건을 함께 고정하고 반복 측정해야 한다는 것입니다. [후속 비교 기록](records/kospi-sensitivity.md)
+There were three repetitions. In a follow-up comparison that retrained four times on a different data period, the ordering of the per-condition standard deviations also changed. The conclusion these records support is that model comparisons need the data period, the seed-selection method, and the evaluation condition fixed together, with repeated measurement. [Follow-up comparison](records/kospi-sensitivity.md)
 
-`uv run --locked python -m pytest -q tests/test_cs_mlp_inference_filter.py`로 목표값이 0인 행의 추론을 검증할 수 있습니다. 표는 당시 외부 백테스트 엔진이 산출한 기록을 요약했습니다.
+`uv run --locked python -m pytest -q tests/test_cs_mlp_inference_filter.py` verifies inference on zero-target rows. The table summarizes records produced at the time by an external backtest engine.

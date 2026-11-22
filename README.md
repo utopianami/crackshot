@@ -1,32 +1,97 @@
 # Crackshot
 
-금융 시계열 연구를 반복하면서 세 가지를 설계했습니다. **JAX에서는 같은 데이터로 모델을 바꿔 학습하고, Alpha Squad에서는 관찰을 다음 실험의 안건으로 좁히고, AutoResearch에서는 기준선부터 기각 이유까지 기록해 다음 회차에 이어갑니다.**
+A research environment for cross-sectional return prediction in financial markets, written in JAX and designed to be operated together with an AI coding agent.
 
-### 1. JAX에서 모델을 바꿔 실험하기
+## What this project is
 
-TabM과 FT-Transformer는 구조도 학습 방식도 다르지만, 같은 학습 스크립트에서 같은 데이터와 라벨을 사용합니다. 모델별 순전파는 Equinox 모듈에, 최적화와 예측은 트레이너에 둡니다. 트레이너가 자신의 이름과 기본 설정을 등록하면 학습 진입점이 YAML의 `model.name`으로 구현을 선택합니다. 새 모델을 추가할 때 공통 학습 스크립트를 수정할 필요가 없습니다. [레지스트리](src/training/registry.py) · [학습 진입점](scripts/train.py) · [TabM 설정](configs/tab_m_binance_phase1.yaml) · [FT-Transformer 설정](configs/ft_transformer_binance_phase1.yaml)
+The research question is the same in both markets studied here: at each point in time, rank a universe of assets by expected short-horizon return, and check whether that ranking still earns money after trading costs.
 
-**직접 실행** · 저장소 루트에서 다음 명령을 실행하면 고정된 합성 데이터로 두 모델이 각각 한 epoch 학습합니다. 각 트레이너는 같은 테스트 샘플 16개에 대해 5개 클래스 확률을 반환합니다. Python 3.12와 `uv`를 사용합니다.
+- **KOSPI stocks:** predict the return bucket (five classes) 120 minutes ahead for each stock.
+- **Binance USDT-M perpetual futures:** build a long/short portfolio across about 300 assets, rebalanced every four hours, on returns with the BTC market direction removed.
+
+In this kind of research the signal is weak, most ideas fail, and a result can change with the seed or with the backtest settings. Progress depends less on any single model than on how many ideas can be tested fairly and on whether what was learned, including the failures, is still available for the next experiment. So the project is built around the research process itself. A model is one replaceable part of it.
+
+## Key strengths
+
+- **Fast, fair model comparison.** A new model is one architecture file, one trainer, and a YAML entry. The shared training code does not change, so two models are compared on identical data, labels, and evaluation.
+- **The same code across markets.** Dataset-specific values live in config, not in model code. The same trainer runs on KOSPI stocks and on Binance futures.
+- **Research that continues across sessions.** Every experiment leaves a hypothesis, the fixed conditions, the numbers, and a verdict in files. A new session, human or agent, starts from those files without relying on anyone's memory.
+- **Research questions chosen by structured debate.** A multi-agent meeting challenges each proposal from the feature, evaluation, and implementation sides, using related papers and past results, before any compute is spent.
+- **Honest evaluation.** Negative results are recorded with their reasons. The case studies below include a collapsed model, an ensemble that did not help, and a measurement of how much the backtest settings alone move the result.
+- **Checkable without market data.** 35 tests and a synthetic-data demo run from a fresh clone with no external account.
+
+## How it is organized
+
+The strengths above come from three parts that feed each other:
+
+| Part | Role | Guide |
+| --- | --- | --- |
+| **JAX experiment framework** | Runs the experiment. Models and inputs are swappable. | [research/jax.md](research/jax.md) |
+| **AutoResearch** | Keeps the research loop going. Records each iteration so the next one builds on it. | [autoresearch/README.md](autoresearch/README.md) |
+| **Alpha Squad** | Decides what to test next. Turns an observation into a research question and an experiment spec. | [alpha_squad/README.md](alpha_squad/README.md) |
+
+```
+Alpha Squad            AutoResearch                 JAX framework
+(what to test next) -> (hypothesis, baseline,    -> (swap model or input,
+        ^               fixed conditions)            train, evaluate)
+        |                                                  |
+        +------ verdict and reasons, written to files <----+
+```
+
+### 1. JAX framework: swap the model, swap the input
+
+**Swap the model.** TabM and FT-Transformer differ in architecture and in how they train, yet both run from the same training script on the same data and labels. The forward pass lives in an Equinox module; optimization and prediction live in a trainer. Each trainer registers its own name and default config, and the entry point picks the implementation from `model.name` in the YAML. Adding a model does not touch the shared training script. [Registry](src/training/registry.py) · [Training entry point](scripts/train.py) · [TabM config](configs/tab_m_binance_phase1.yaml) · [FT-Transformer config](configs/ft_transformer_binance_phase1.yaml)
+
+**Swap the input.** Everything that depends on the dataset (data path, which label columns are the horizons, the return-bucket edges) sits in the `data` and `dataset` blocks of the YAML. The same CS-MLP trainer runs on both markets by changing those blocks only. [KOSPI config](configs/cs_mlp_200_base.yaml) · [Binance config](configs/cs_mlp_binance_phase1.yaml)
+
+**Try it.** From the repository root, this trains both models for one epoch on a fixed synthetic dataset. Each trainer returns 5-class probabilities for the same 16 test samples. Requires Python 3.12 and `uv`.
 
 ```bash
 uv run --locked python -m examples.compare_trainers
 ```
 
-모델을 추가하는 순서와 실제 시세 데이터로 학습하는 명령은 [JAX 실험 구조](research/jax.md)에 있습니다.
+### 2. AutoResearch: from one result to the next experiment
 
-### 2. Alpha Squad로 다음 회의 주제 정하기
+Each iteration writes down the hypothesis, the fixed conditions, and the evaluation method, then checks that the implemented config matches the plan before running. Afterwards the numbers and the verdict (`keep`, `discard`, or `crash`) go into a cumulative results table, and the reasoning goes into a dated research log. The next session starts by reading those files.
 
-연구자가 관찰과 질문을 안건으로 입력하면 다섯 역할의 에이전트가 관련 문헌과 지난 실험을 바탕으로 반론을 제기하고, 비교할 기준선과 후속 실험을 제안합니다. 4월 20일에는 **“비용을 반영하면 세 분류 모델의 롱숏 성과가 모두 무너지는데, 학습 목표를 어떻게 바꿀까?”**를 다뤘습니다. 회의는 단계별 검증을 제안했고, 실제 연구에서는 기존 데이터를 유지한 채 포트폴리오 손실부터 시험했습니다. [안건 입력과 회의 진행](alpha_squad/README.md) · [당시 회의록](alpha_squad/meetings/meeting_20260420_171228.md)
+For example, on April 28 a weighted ensemble was tested after looking at the correlation between model predictions. It failed to beat the simple average, so the next iteration checked how stable the ranking was across more seeds. [Procedure and worked example](autoresearch/README.md) · [Research log for that day](autoresearch/records/binance-2026-04-28.md)
 
-### 3. AutoResearch로 가설부터 후속 실험까지 이어가기
+### 3. Alpha Squad: setting the next research question
 
-회차별로 가설, 고정 조건, 평가 방법을 적고, 구현한 설정이 계획과 일치하는지 대조합니다. 실행 후에는 수치와 판정을 결과표에, 판단 근거를 연구 일지에 남깁니다. 예를 들어 4월 28일에는 모델 간 예측 상관을 보고 가중 앙상블을 시험했고, 단순 평균을 이기지 못하자 다음 회차에서 시드 수에 따른 안정성을 확인했습니다. [연구 절차와 작성 예시](autoresearch/README.md) · [당시 연구 일지](autoresearch/records/binance-2026-04-28.md)
+The researcher submits an observation and a question as the agenda. Five agents with different roles challenge it using related papers and past experiments, then propose a baseline to compare against and follow-up experiments. On April 20 the agenda was: **"Once costs are included, the long/short performance of all three classification models collapses. How should the training objective change?"** The meeting proposed a staged validation plan; the actual research kept the existing data and tested a portfolio loss first. [Agenda input and meeting flow](alpha_squad/README.md) · [Meeting transcript](alpha_squad/meetings/meeting_20260420_171228.md)
 
-### 적용 사례와 검증
+## Case studies
 
-| 사례 | 확인한 점 | 근거 |
+| Case | What was found | Details |
 | --- | --- | --- |
-| Binance 포트폴리오 손실 | 첫 설정에서 모든 종목 점수가 같아진 원인과, 세 시드를 합쳐도 거래비용을 극복하지 못한 구간 | [설계·결과·한계](research/binance.md) |
-| KOSPI 평가 재현성 | 추론 필터의 오류를 고친 뒤 동일 시드 학습 3회와 백테스트 8개 조건으로 평가 변동을 측정 | [실험과 회귀 테스트](research/kospi.md) |
+| Binance portfolio loss | Why every asset received the same score under the first config, and a period where combining three seeds still did not overcome trading costs | [Design, results, limits](research/binance.md) |
+| KOSPI evaluation reproducibility | After fixing a bug in the inference filter, evaluation variance was measured with three same-seed trainings across eight backtest conditions | [Experiment and regression test](research/kospi.md) |
 
-`uv run --locked python -m pytest -q`로 트레이너 자동 등록, 설정 덮어쓰기, 포트폴리오 학습과 추론 필터를 검사할 수 있습니다. 데모와 테스트는 외부 계정 없이 동작합니다. 사례의 수치는 당시 기록에서 가져왔으며, 전체 학습과 백테스트를 반복하려면 해당 기간의 시세와 전처리 데이터가 필요합니다.
+## Verification
+
+```bash
+uv run --locked python -m pytest -q
+```
+
+The tests cover trainer auto-registration, config overrides, the portfolio training step, and the inference filter.
+
+The numbers in the case studies come from the records written at the time. Re-running full training and backtests needs the market data and preprocessed arrays for those periods, which are not in this repository.
+
+## Repository layout
+
+```
+src/            JAX framework: architectures, trainers, registry, losses, config schema
+configs/        Experiment configs (model, data, and dataset blocks)
+scripts/        Training entry point, evaluation, Binance data builders and backtest
+examples/       Synthetic-data demo of swapping trainers
+autoresearch/   Research loop: procedure, original protocol, logs, results table
+alpha_squad/    Multi-agent research meeting: agents, literature pipeline, one transcript
+research/       Write-ups of the two case studies, with the original records
+tests/          Regression and unit tests
+```
+
+## Scope and language
+
+This is a curated subset of a larger research codebase. It does not include raw market data, trained weights, model-serving code, or live-trading code. Some records mention an external backtest engine and server paths that are not part of this repository.
+
+The guides and write-ups are in English. The original records (research logs, the meeting transcript, the results table) are kept as written, in Korean, each with a short English note at the top. Some code comments and commit messages are also in Korean.

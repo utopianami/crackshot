@@ -1,5 +1,7 @@
 # 백테스트 예민도 (Backtest Sensitivity)
 
+> **English note.** Original record, kept in Korean as written. Backtest sensitivity: the same three trained models evaluated under eight backtest conditions, with the mean and standard deviation of cumulative alpha per condition. English summary: [KOSPI write-up](../kospi.md).
+
 > 2026-04-08 발견. 같은 학습 모델 3개를 서로 다른 백테스트 config로 돌려서 std (variance) 측정한 결과, config에 따라 variance가 **10~27배까지 차이** 남. 실험 판정에 핵심.
 
 ---

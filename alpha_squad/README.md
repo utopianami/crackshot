@@ -1,42 +1,42 @@
 # Alpha Squad
 
-어떤 금융 ML 실험에 시간을 쓸지 결정하기 위해 만든 연구 회의 도구입니다. 지난 실험과 관련 문헌을 입력으로 받고, 역할별 반론을 거친 뒤 비교 대상·측정 항목·기각 조건을 담은 실험안을 생성합니다.
+A research-meeting tool for deciding which financial ML experiment is worth the time. It takes past experiments and related literature as input, puts a proposal through role-based objections, and produces an experiment plan with a comparison target, the quantities to measure, and the conditions for rejecting it. Its output is the starting point of an [AutoResearch](../autoresearch/README.md) iteration.
 
-## 주제 설정
+## Setting the topic
 
-연구자는 `meet`의 첫 인자로 이번 회의에서 결정할 질문을 지정합니다. `--context-file`에는 이전 회차의 관찰과 제약을 넘길 수 있습니다. 같은 주제가 사전 문헌 조사, 역할별 토론, 회의 기록에 전달됩니다. 예를 들어 아래 안건은 점수 분산이 0이 된 실패를 다음 회의의 출발점으로 삼습니다.
+The researcher passes the question to decide as the first argument of `meet`. `--context-file` carries observations and constraints from the previous iteration. The same topic is handed to the literature search, the role-based discussion, and the meeting record. The agenda below, for example, makes a failure (score variance collapsing to zero) the starting point of the next meeting.
 
 ```bash
 uv run --locked --extra alpha-squad python -m alpha_squad.run meet \
-  "포트폴리오 점수가 상수로 수렴했다. 먼저 제거해 볼 페널티와 대조군은 무엇인가?" \
+  "The portfolio scores converged to a constant. Which penalty should be removed first, and what is the control?" \
   --context-file research/binance.md --rounds 2
 ```
 
-[주제 입력 CLI](run.py) · [주제를 전달하고 회의를 저장하는 코드](meeting/orchestrator.py)
+[Topic CLI](run.py) · [Code that passes the topic and saves the meeting](meeting/orchestrator.py)
 
-## 4월 20일 회의에서 실제로 채택한 것
+## What was actually adopted from the April 20 meeting
 
-| 단계 | Binance 롱숏 사례 |
+| Stage | Binance long/short case |
 | --- | --- |
-| 회의에 가져간 문제 | 분류 모델 세 개 모두 거래비용을 반영하자 기준선의 롱숏 Sharpe가 음수가 됐습니다. 포트폴리오를 직접 학습하는 방향은 이미 안건에 있었습니다. |
-| 에이전트의 검토 | 피처 담당은 베타 추정과 데이터 누수를, 평가 담당은 타깃 정의를 검토했습니다. 회의록에는 잔차 타깃 검증부터 포트폴리오 손실 비교까지 단계별 제안이 남아 있습니다. |
-| 연구자의 선택 | 가능성을 먼저 확인하기 위해 기존 데이터 배열과 4시간 리밸런싱을 유지하고 포트폴리오 손실 실험을 앞당겼습니다. |
-| 실험에서 얻은 답 | 첫 설정은 종목별 점수가 상수로 수렴했습니다. 이후 설정에서 점수 차이를 회복했고, 여러 시드가 같은 구간에서 함께 실패하는 조건도 확인했습니다. |
+| Problem brought to the meeting | With trading costs included, the baseline long/short Sharpe of all three classification models turned negative. Training the portfolio directly was already on the agenda. |
+| Review by the agents | The feature specialist examined the beta estimate and data leakage; the evaluation specialist examined the target definition. The transcript contains a staged proposal, from validating the residual target to comparing portfolio losses. |
+| The researcher's choice | To check feasibility first, the existing data arrays and 4-hour rebalancing were kept, and the portfolio-loss experiment was moved forward. |
+| Answer from the experiment | Under the first config the per-asset scores converged to a constant. A later config restored the score differences, and it also showed a condition under which several seeds fail together in the same period. |
 
-[회의 원문](meetings/meeting_20260420_171228.md) · [채택한 설정과 결과](../research/binance.md)
+[Meeting transcript](meetings/meeting_20260420_171228.md) · [Adopted configs and results](../research/binance.md)
 
-## 구현
+## Implementation
 
-1. **문헌 후보 수집.** 연구 질문에서 가상 초록을 만들어 로컬 논문 인덱스를 검색하고, 언어 모델의 추천 목록과 합칩니다. 중복을 제거하고 관련도순으로 정리한 결과를 회의 컨텍스트로 사용합니다. [문헌 검색 파이프라인](knowledge/researcher2_pipeline.py)
-2. **역할별 비판.** 아키텍처 담당이 제안하면 피처·평가·구현 담당이 차례로 검토합니다. 최초 제안자가 반론에 답한 뒤 실험 PM이 사양을 정리합니다. [발언 순서와 회의 진행](meeting/orchestrator.py) · [역할별 프롬프트](agents/)
-3. **기록.** 회의별 Markdown 원문을 저장합니다. 지식 그래프와 벡터 메모리는 후속 조사에 재사용할 수 있습니다. [LightRAG 연동](knowledge/lightrag_backend.py) · [ChromaDB 메모리](memory/store.py)
+1. **Collecting literature candidates.** A hypothetical abstract is generated from the research question and used to search a local paper index; the hits are merged with a list recommended by a language model. After de-duplication and ranking by relevance, the result becomes the meeting context. [Literature pipeline](knowledge/researcher2_pipeline.py)
+2. **Role-based critique.** The architecture specialist proposes; the feature, evaluation, and implementation specialists review in turn. The original proposer answers the objections, and the experiment PM writes up the spec. [Speaking order and meeting flow](meeting/orchestrator.py) · [Role prompts](agents/)
+3. **Records.** Each meeting is saved as a Markdown transcript. The knowledge graph and vector memory can be reused in later searches. [LightRAG integration](knowledge/lightrag_backend.py) · [ChromaDB memory](memory/store.py)
 
-## 실행 환경
+## Running it
 
-대표 회의는 위 원문에서 바로 읽을 수 있습니다. 새 회의를 실행할 때는 저장소 루트에서 아래 명령을 사용합니다. 로그인한 Claude CLI와 최초 임베딩 모델 다운로드가 필요합니다. 로컬 논문 검색을 사용하려면 별도로 초록 인덱스를 준비해야 합니다. [인덱스 수집 코드](knowledge/collect_papers.py)
+The representative meeting can be read directly in the transcript above. To run a new meeting, use the command below from the repository root. It needs a logged-in Claude CLI and downloads an embedding model on first use. Local paper search needs an abstract index prepared separately. [Index collection](knowledge/collect_papers.py)
 
 ```bash
 uv run --locked --extra alpha-squad python -m alpha_squad.run meet --help
 ```
 
-`meet`는 외부 모델을 호출하는 명령입니다. `--model`과 `--pm-model`로 회의 모델을 지정할 수 있습니다. 기본 연구 테스트는 계정 없이 실행할 수 있습니다. [테스트 실행 방법](../README.md)
+`meet` calls an external model. `--model` and `--pm-model` select the meeting models. The core research tests run without any account. [How to run the tests](../README.md)
