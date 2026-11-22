@@ -11,5 +11,3 @@ alpha_squad/research_cache/
 alpha_squad/research_results/
 alpha_squad/research_store/
 alpha_squad/papers/
-alpha_squad/meetings/*
-!alpha_squad/meetings/meeting_20260420_171228.md

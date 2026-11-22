@@ -32,6 +32,47 @@ In the April 28 Binance research, the correlation between predictions was observ
 
 For KOSPI, each row of the table holds the date, dataset, model, trade count, performance, verdict, and reason. The April 2 rows include the decision to reject three models and carry the base-feature CS-MLP into follow-up experiments. [Results table](records/kospi-results.csv)
 
+## Record index
+
+These are the original files the loop produced, kept as written (in Korean). Internal dashboard links and a colleague's name were removed; nothing else was edited.
+
+**KOSPI: 21 session logs, March 16 to April 15, 2026**
+
+| Date | Session | Log |
+| --- | --- | --- |
+| 03-16 | 114 experiments on the first dataset | [log](records/kospi/2026-03-16.md) |
+| 03-17 | Daily session: plan, backtest results, verdicts | [log](records/kospi/2026-03-17.md) |
+| 03-18 | Daily session: plan, backtest results, verdicts | [log](records/kospi/2026-03-18.md) |
+| 03-19 | Daily session: plan, backtest results, verdicts | [log](records/kospi/2026-03-19.md) |
+| 03-20 | Extending from the top 200 to all KOSPI stocks (four files: first attempt, next-experiment plan, retry with 600 experiments, stocks outside the top 200 from a zero baseline) | [1](records/kospi/2026-03-20_1.md) · [2](records/kospi/2026-03-20_2.md) · [3](records/kospi/2026-03-20_3.md) · [4](records/kospi/2026-03-20_4.md) |
+| 03-21 | Improving performance outside the top 200; loss and label changes plus model search | [1](records/kospi/2026-03-21.md) · [2](records/kospi/2026-03-21_2.md) |
+| 03-25 | Improving KOSPI 200 accuracy | [log](records/kospi/2026-03-25.md) |
+| 03-26 | Features from overnight global assets | [log](records/kospi/2026-03-26.md) |
+| 03-27 | Sector ETF mapping and MASTER gating | [log](records/kospi/2026-03-27.md) |
+| 03-28 | Per-stock beta times overnight signal | [log](records/kospi/2026-03-28.md) |
+| 03-29 | New directions to exceed the reference model | [log](records/kospi/2026-03-29.md) |
+| 03-30 | New best cumulative alpha | [log](records/kospi/2026-03-30.md) |
+| 04-02 | New best under the new backtest standard | [log](records/kospi/2026-04-02.md) |
+| 04-03 | Structural change based on an Alpha Squad meeting | [log](records/kospi/2026-04-03.md) |
+| 04-07 | New best under the revised backtest settings | [log](records/kospi/2026-04-07.md) |
+| 04-08 | Backtest redesign, training reproducibility, seed-tournament finding | [log](../research/records/kospi-2026-04-08.md) |
+| 04-15 | Root cause of the TabM sentinel collapse | [log](records/kospi/2026-04-15.md) |
+
+Alongside the logs: the [protocol](records/kospi-protocol.md), the [results table](records/kospi-results.csv), and the [don't-repeat list](records/kospi/dont-repeat.md) of failed approaches and mistakes.
+
+**Binance: April 20 to April 28, 2026**
+
+| Date | Record |
+| --- | --- |
+| 04-20 | [Research plan](records/binance/2026-04-20-plan.md), written from an Alpha Squad meeting: problem statement, phases, go/no-go gates |
+| | [Phase 0 verdict](records/binance/phase0-verdict.md) on the entry gates |
+| 04-22 | [Stage 4 final comparison](records/binance/2026-04-22-stage4-final-comparison.md): six scorer architectures across three windows |
+| | [Stage 4 model review](records/binance/stage4-models-review.md): paper review and implementation checklist for added models |
+| | [Seed variance summary](records/binance/stage4-seed-variance.md): three models, five seeds, three windows |
+| | [v7 to v8 research log](records/binance/v7-v8-research-log.md), after a stride-anchor fix |
+| 04-25 | [Session log](records/binance/2026-04-25-off30.md): running the offset-30 plan and diagnosing a fading 1-hour signal |
+| 04-28 | [Session log](records/binance-2026-04-28.md): autonomous observe, hypothesize, experiment cycle on CS-MLP variants |
+
 ## What can be reproduced here
 
 The original protocol and logs refer to the research server's paths and to a separate backtest engine. What runs directly from this repository is training on synthetic data and the tests. Repeating an iteration on real market data requires preparing the data period and the evaluation environment, then following the steps above. [Training commands and demo](../research/jax.md)
